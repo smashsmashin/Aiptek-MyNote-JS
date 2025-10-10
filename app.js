@@ -322,11 +322,6 @@ function updateThumbs() {
     const page = pages[currentPageIndex];
     const totalPaths = page.data.length;
 
-    if (selectionMin === selectionMax) {
-        selectionBar.classList.add('thumbs-touching');
-    } else {
-        selectionBar.classList.remove('thumbs-touching');
-    }
 
     if (totalPaths === 0) {
         minThumb.style.top = '0%';

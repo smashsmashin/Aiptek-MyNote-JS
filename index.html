@@ -100,16 +100,15 @@
             cursor: ns-resize;
             left: -5px; /* Center the thumb */
             outline: none;
-            transform: translateY(-50%); /* Center thumb vertically on its position */
+        }
+        #min-thumb {
+            transform: translateY(-100%); /* Align bottom edge to value */
+        }
+        #max-thumb {
+            transform: translateY(0); /* Align top edge to value */
         }
         .thumb:focus {
             box-shadow: 0 0 0 2px rgba(108, 117, 125, 0.5);
-        }
-        #selection-bar.thumbs-touching #min-thumb {
-            transform: translateY(-100%);
-        }
-        #selection-bar.thumbs-touching #max-thumb {
-            transform: translateY(0);
         }
     </style>
 </head>
