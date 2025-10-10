@@ -5,24 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TOP File Visualizer</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
-        #drop-zone { border: 2px dashed #ccc; border-radius: 20px; width: 80%; max-width: 600px; margin: 20px; padding: 20px; text-align: center; }
-        #drop-zone.dragover { border-color: #000; }
-        canvas { border: 1px solid black; margin-top: 20px; }
-        #controls { margin-top: 10px; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: sans-serif;
+            overflow: hidden; /* Prevent body scrolling */
+        }
+        .main-container {
+            display: flex;
+            height: 100%;
+        }
+        #index-section {
+            width: 250px;
+            padding: 10px;
+            border-right: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+        }
+        #drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        #drop-zone.dragover {
+            border-color: #000;
+            background-color: #f0f0f0;
+        }
+        #page-list-container {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+        #page-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        #page-list li {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        #page-list li:hover {
+            background-color: #f0f0f0;
+        }
+        #page-list li.active {
+            background-color: #e0e0ff;
+            font-weight: bold;
+        }
+        #content-section {
+            flex-grow: 1;
+            background-color: #e0e0e0; /* lightgray */
+            overflow: hidden; /* Canvas panning will be handled by JS */
+            position: relative;
+        }
+        canvas {
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            position: absolute; /* Needed for panning */
+        }
     </style>
 </head>
 <body>
-    <h1>Aiptek MiNote TOP File Visualizer</h1>
-    <div id="drop-zone">
-        <p>Drop TOP files here or click to select files</p>
-        <input type="file" id="file-input" multiple style="display: none;">
+    <div class="main-container">
+        <div id="index-section">
+            <div id="drop-zone">
+                <p>Drop TOP files here or click to select</p>
+                <input type="file" id="file-input" multiple style="display: none;">
+            </div>
+            <div id="page-list-container">
+                <ul id="page-list"></ul>
+            </div>
+        </div>
+        <div id="content-section">
+            <canvas id="canvas"></canvas>
+        </div>
     </div>
-    <div id="controls">
-        <label for="page-select">Select Page:</label>
-        <select id="page-select"></select>
-    </div>
-    <canvas id="canvas"></canvas>
 
     <script src="app.js"></script>
 </body>
