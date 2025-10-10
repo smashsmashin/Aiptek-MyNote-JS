@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOP File Visualizer</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #drop-zone { border: 2px dashed #ccc; border-radius: 20px; width: 80%; max-width: 600px; margin: 20px; padding: 20px; text-align: center; }
+        #drop-zone.dragover { border-color: #000; }
+        canvas { border: 1px solid black; margin-top: 20px; }
+        #controls { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Aiptek MiNote TOP File Visualizer</h1>
+    <div id="drop-zone">
+        <p>Drop TOP files here or click to select files</p>
+        <input type="file" id="file-input" multiple style="display: none;">
+    </div>
+    <div id="controls">
+        <label for="page-select">Select Page:</label>
+        <select id="page-select"></select>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script src="app.js"></script>
+</body>
+</html>
