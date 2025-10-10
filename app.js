@@ -123,7 +123,7 @@ function switchPage(index) {
 
 // --- Canvas Drawing ---
 
-const PAGE_ASPECT_RATIO = 8.5 / 11; // Letter paper
+const PAGE_ASPECT_RATIO = 210 / 297; // A4 paper
 let scale = 1;
 let panX = 0;
 let panY = 0;
@@ -175,7 +175,7 @@ function drawCurrentPage() {
     }
 
     // --- Panning constraints ---
-    const panMargin = 10; // in pixels
+    const panMargin = 20; // in pixels
     const minX = -(paperWidth - containerWidth) - panMargin;
     const maxX = margin;
     const minY = -(paperHeight - containerHeight) - margin;
