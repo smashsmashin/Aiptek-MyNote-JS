@@ -323,9 +323,9 @@ function updateThumbs() {
     const totalPaths = page.data.length;
 
     if (selectionMin === selectionMax) {
-        selectionBar.classList.add('side-by-side');
+        selectionBar.classList.add('thumbs-touching');
     } else {
-        selectionBar.classList.remove('side-by-side');
+        selectionBar.classList.remove('thumbs-touching');
     }
 
     if (totalPaths === 0) {
