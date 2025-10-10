@@ -8,8 +8,6 @@ const ctx = canvas.getContext('2d');
 const selectionBar = document.getElementById('selection-bar');
 const minThumb = document.getElementById('min-thumb');
 const maxThumb = document.getElementById('max-thumb');
-const minValueDisplay = document.getElementById('min-value');
-const maxValueDisplay = document.getElementById('max-value');
 
 
 const pages = [];
@@ -324,9 +322,6 @@ function updateThumbs() {
     const page = pages[currentPageIndex];
     const totalPaths = page.data.length;
 
-    minValueDisplay.textContent = selectionMin;
-    maxValueDisplay.textContent = selectionMax;
-
     if (selectionMin === selectionMax) {
         selectionBar.classList.add('side-by-side');
     } else {
@@ -397,7 +392,9 @@ maxThumb.addEventListener('mousedown', onThumbMouseDown);
 
 function handleThumbKeyDown(event) {
     const thumb = event.target;
+    const isArrowKey = event.key === 'ArrowUp' || event.key === 'ArrowDown';
     let step = 0;
+
     if (event.key === 'ArrowUp') {
         step = -1;
     } else if (event.key === 'ArrowDown') {
@@ -417,10 +414,26 @@ function handleThumbKeyDown(event) {
 
     if (thumb === minThumb) {
         selectionMin = Math.max(0, Math.min(selectionMin + step, selectionMax));
-        console.log(`Min thumb: ${selectionMin}, First path: ${selectionMin}`);
+        if (isArrowKey) {
+            console.log(`Min thumb: ${selectionMin}`);
+            const path = page.data[selectionMin];
+            if (path) {
+                console.log(JSON.stringify(path.map(p => `(${p.x},${p.y})`)));
+            } else {
+                console.log("No selected path.");
+            }
+        }
     } else { // thumb === maxThumb
         selectionMax = Math.max(selectionMin, Math.min(selectionMax + step, totalPaths));
-        console.log(`Max thumb: ${selectionMax}, Last path: ${selectionMax - 1}`);
+        if (isArrowKey) {
+            console.log(`Max thumb: ${selectionMax}`);
+            const path = page.data[selectionMax - 1];
+            if (path) {
+                console.log(JSON.stringify(path.map(p => `(${p.x},${p.y})`)));
+            } else {
+                console.log("No selected path.");
+            }
+        }
     }
 
     updateThumbs();

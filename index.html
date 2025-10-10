@@ -75,23 +75,20 @@
             height: 100%;
         }
         #selection-section {
-            width: 80px; /* Increased width for values */
+            width: 50px;
             padding: 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
             background-color: #f0f0f0;
             border-left: 1px solid #ccc;
-            font-size: 12px;
-            color: #333;
         }
         #selection-bar {
             position: relative;
             width: 10px;
-            height: calc(100% - 40px); /* Make space for value displays */
+            height: 100%;
             background-color: #ddd;
             border-radius: 5px;
-            margin: 20px 0;
         }
         .thumb {
             position: absolute;
@@ -114,14 +111,6 @@
         #selection-bar.side-by-side #max-thumb {
             left: 10px;
         }
-        .thumb-value {
-            position: absolute;
-            width: 40px;
-            text-align: right;
-            left: -60px;
-            transform: translateY(-50%);
-            pointer-events: none; /* Prevent text from interfering with drag */
-        }
     </style>
 </head>
 <body>
@@ -141,12 +130,8 @@
             </div>
             <div id="selection-section">
                 <div id="selection-bar">
-                    <div id="min-thumb" class="thumb" tabindex="0">
-                        <span id="min-value" class="thumb-value">0</span>
-                    </div>
-                    <div id="max-thumb" class="thumb" tabindex="0">
-                        <span id="max-value" class="thumb-value">0</span>
-                    </div>
+                    <div id="min-thumb" class="thumb" tabindex="0"></div>
+                    <div id="max-thumb" class="thumb" tabindex="0"></div>
                 </div>
             </div>
         </div>
