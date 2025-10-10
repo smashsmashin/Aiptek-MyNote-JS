@@ -68,39 +68,59 @@
             overflow: hidden;
         }
         canvas {
-            background-color: white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            position: absolute; /* Needed for panning */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
         #selection-section {
-            width: 50px;
+            width: 80px; /* Increased width for values */
             padding: 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
             background-color: #f0f0f0;
             border-left: 1px solid #ccc;
+            font-size: 12px;
+            color: #333;
         }
         #selection-bar {
             position: relative;
             width: 10px;
-            height: 100%;
+            height: calc(100% - 40px); /* Make space for value displays */
             background-color: #ddd;
             border-radius: 5px;
+            margin: 20px 0;
         }
         .thumb {
             position: absolute;
-            width: 30px;
-            height: 15px;
-            background-color: #007bff;
-            border: 1px solid #0056b3;
-            border-radius: 3px;
+            width: 20px; /* Adjusted width */
+            height: 10px;
+            background-color: darkgray;
+            border: 1px solid #666;
+            border-radius: 2px;
             cursor: ns-resize;
-            left: -10px; /* Center the thumb on the bar */
-            outline: none; /* Remove outline on focus */
+            left: -5px; /* Center the thumb */
+            outline: none;
+            transform: translateY(-50%); /* Center thumb vertically on its position */
         }
         .thumb:focus {
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.5);
+            box-shadow: 0 0 0 2px rgba(108, 117, 125, 0.5);
+        }
+        #selection-bar.side-by-side #min-thumb {
+            left: -20px;
+        }
+        #selection-bar.side-by-side #max-thumb {
+            left: 10px;
+        }
+        .thumb-value {
+            position: absolute;
+            width: 40px;
+            text-align: right;
+            left: -60px;
+            transform: translateY(-50%);
+            pointer-events: none; /* Prevent text from interfering with drag */
         }
     </style>
 </head>
@@ -121,8 +141,12 @@
             </div>
             <div id="selection-section">
                 <div id="selection-bar">
-                    <div id="min-thumb" class="thumb" tabindex="0"></div>
-                    <div id="max-thumb" class="thumb" tabindex="0"></div>
+                    <div id="min-thumb" class="thumb" tabindex="0">
+                        <span id="min-value" class="thumb-value">0</span>
+                    </div>
+                    <div id="max-thumb" class="thumb" tabindex="0">
+                        <span id="max-value" class="thumb-value">0</span>
+                    </div>
                 </div>
             </div>
         </div>

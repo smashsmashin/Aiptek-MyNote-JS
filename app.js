@@ -8,6 +8,8 @@ const ctx = canvas.getContext('2d');
 const selectionBar = document.getElementById('selection-bar');
 const minThumb = document.getElementById('min-thumb');
 const maxThumb = document.getElementById('max-thumb');
+const minValueDisplay = document.getElementById('min-value');
+const maxValueDisplay = document.getElementById('max-value');
 
 
 const pages = [];
@@ -235,7 +237,7 @@ function drawCurrentPage() {
 
     page.data.forEach((path, i) => {
         if (path.length > 0) {
-            ctx.strokeStyle = (i >= selectionMin && i <= selectionMax) ? 'blue' : 'black';
+            ctx.strokeStyle = (i >= selectionMin && i < selectionMax) ? 'blue' : 'black';
             ctx.beginPath();
             const startPoint = path[0];
             ctx.moveTo(startPoint.x, startPoint.y);
@@ -315,21 +317,31 @@ canvasContainer.addEventListener('mousemove', (e) => {
     }
 });
 
-
 // --- Selection Bar Interaction ---
 
 function updateThumbs() {
     if (currentPageIndex < 0) return;
     const page = pages[currentPageIndex];
     const totalPaths = page.data.length;
+
+    minValueDisplay.textContent = selectionMin;
+    maxValueDisplay.textContent = selectionMax;
+
+    if (selectionMin === selectionMax) {
+        selectionBar.classList.add('side-by-side');
+    } else {
+        selectionBar.classList.remove('side-by-side');
+    }
+
     if (totalPaths === 0) {
         minThumb.style.top = '0%';
         maxThumb.style.top = '0%';
         return;
     }
 
-    const minPercent = (selectionMin / (totalPaths - 1)) * 100;
-    const maxPercent = (selectionMax / (totalPaths - 1)) * 100;
+    // Use totalPaths for percentage calculation to prevent thumb going off-screen
+    const minPercent = (selectionMin / totalPaths) * 100;
+    const maxPercent = (selectionMax / totalPaths) * 100;
 
     minThumb.style.top = `${minPercent}%`;
     maxThumb.style.top = `${maxPercent}%`;
@@ -364,16 +376,16 @@ function onThumbMouseMove(event) {
     const barRect = selectionBar.getBoundingClientRect();
     const offsetY = event.clientY - barRect.top;
     const percent = Math.max(0, Math.min(100, (offsetY / barRect.height) * 100));
-    const value = Math.round(((totalPaths - 1) * percent) / 100);
+    const value = Math.round((totalPaths * percent) / 100);
 
     if (activeThumb === minThumb) {
-        selectionMin = Math.min(value, selectionMax -1);
+        selectionMin = Math.min(value, selectionMax);
     } else { // activeThumb === maxThumb
-        selectionMax = Math.max(value, selectionMin + 1);
+        selectionMax = Math.max(value, selectionMin);
     }
 
     selectionMin = Math.max(0, selectionMin);
-    selectionMax = Math.min(totalPaths - 1, selectionMax);
+    selectionMax = Math.min(totalPaths, selectionMax);
 
 
     updateThumbs();
@@ -404,9 +416,11 @@ function handleThumbKeyDown(event) {
     const totalPaths = page.data.length;
 
     if (thumb === minThumb) {
-        selectionMin = Math.max(0, Math.min(selectionMin + step, selectionMax - 1));
+        selectionMin = Math.max(0, Math.min(selectionMin + step, selectionMax));
+        console.log(`Min thumb: ${selectionMin}, First path: ${selectionMin}`);
     } else { // thumb === maxThumb
-        selectionMax = Math.max(selectionMin + 1, Math.min(selectionMax + step, totalPaths - 1));
+        selectionMax = Math.max(selectionMin, Math.min(selectionMax + step, totalPaths));
+        console.log(`Max thumb: ${selectionMax}, Last path: ${selectionMax - 1}`);
     }
 
     updateThumbs();
