@@ -60,11 +60,47 @@
             background-color: #e0e0e0; /* lightgray */
             overflow: hidden; /* Canvas panning will be handled by JS */
             position: relative;
+            display: flex; /* Use flexbox for content and selection bar */
+        }
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
         }
         canvas {
             background-color: white;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             position: absolute; /* Needed for panning */
+        }
+        #selection-section {
+            width: 50px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            border-left: 1px solid #ccc;
+        }
+        #selection-bar {
+            position: relative;
+            width: 10px;
+            height: 100%;
+            background-color: #ddd;
+            border-radius: 5px;
+        }
+        .thumb {
+            position: absolute;
+            width: 30px;
+            height: 15px;
+            background-color: #007bff;
+            border: 1px solid #0056b3;
+            border-radius: 3px;
+            cursor: ns-resize;
+            left: -10px; /* Center the thumb on the bar */
+            outline: none; /* Remove outline on focus */
+        }
+        .thumb:focus {
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.5);
         }
     </style>
 </head>
@@ -80,7 +116,15 @@
             </div>
         </div>
         <div id="content-section">
-            <canvas id="canvas"></canvas>
+            <div id="canvas-container">
+                <canvas id="canvas"></canvas>
+            </div>
+            <div id="selection-section">
+                <div id="selection-bar">
+                    <div id="min-thumb" class="thumb" tabindex="0"></div>
+                    <div id="max-thumb" class="thumb" tabindex="0"></div>
+                </div>
+            </div>
         </div>
     </div>
 
