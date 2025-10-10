@@ -448,6 +448,30 @@ minThumb.addEventListener('keydown', handleThumbKeyDown);
 maxThumb.addEventListener('keydown', handleThumbKeyDown);
 
 
+// --- Deletion Handling ---
+
+function handleDeleteKey(event) {
+    if (event.key !== 'Delete' || currentPageIndex < 0) return;
+    if (selectionMin >= selectionMax) return; // No selection to delete
+
+    const confirmed = window.confirm(`Are you sure you want to delete ${selectionMax - selectionMin} selected path(s)?`);
+
+    if (confirmed) {
+        const page = pages[currentPageIndex];
+        const deleteCount = selectionMax - selectionMin;
+        page.data.splice(selectionMin, deleteCount);
+
+        // Reset selection
+        selectionMax = selectionMin;
+
+        updateThumbs();
+        drawCurrentPage();
+    }
+}
+
+window.addEventListener('keydown', handleDeleteKey);
+
+
 // Initial setup
 resizeCanvas();
 canvasContainer.style.cursor = 'grab';
