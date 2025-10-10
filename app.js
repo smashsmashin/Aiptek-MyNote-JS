@@ -83,8 +83,8 @@ function parseTopFile(arrayBuffer) {
 
     for (let offset = TOP_HEADER_SIZE; offset + TOP_PACKET_SIZE <= view.byteLength; offset += TOP_PACKET_SIZE) {
         const penStatus = view.getUint8(offset);
-        const y = view.getUint16(offset + 1, true); // true for little-endian
-        const x = view.getUint16(offset + 3, true); // true for little-endian
+        const y = view.getInt16(offset + 1, true); // true for little-endian
+        const x = view.getInt16(offset + 3, true); // true for little-endian
 
         if (currentPath.length === 0) {
             paths.push(currentPath);
