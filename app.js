@@ -416,22 +416,31 @@ function handleThumbKeyDown(event) {
         selectionMin = Math.max(0, Math.min(selectionMin + step, selectionMax));
         if (isArrowKey) {
             console.log(`Min thumb: ${selectionMin}`);
-            const path = page.data[selectionMin];
-            if (path) {
-                console.log(JSON.stringify(path.map(p => `(${p.x},${p.y})`)));
-            } else {
+            if (selectionMin === selectionMax) {
                 console.log("No selected path.");
+            } else {
+                const path = page.data[selectionMin];
+                if (path) {
+                    console.log(`Path ${selectionMin}: ${JSON.stringify(path.map(p => `(${p.x},${p.y})`))}`);
+                } else {
+                    console.log("No selected path.");
+                }
             }
         }
     } else { // thumb === maxThumb
         selectionMax = Math.max(selectionMin, Math.min(selectionMax + step, totalPaths));
         if (isArrowKey) {
             console.log(`Max thumb: ${selectionMax}`);
-            const path = page.data[selectionMax - 1];
-            if (path) {
-                console.log(JSON.stringify(path.map(p => `(${p.x},${p.y})`)));
-            } else {
+            if (selectionMin === selectionMax) {
                 console.log("No selected path.");
+            } else {
+                const pathIndex = selectionMax - 1;
+                const path = page.data[pathIndex];
+                if (path) {
+                    console.log(`Path ${pathIndex}: ${JSON.stringify(path.map(p => `(${p.x},${p.y})`))}`);
+                } else {
+                    console.log("No selected path.");
+                }
             }
         }
     }
