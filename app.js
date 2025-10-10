@@ -245,10 +245,7 @@ function drawCurrentPage() {
 contentSection.addEventListener('wheel', (e) => {
     e.preventDefault();
 
-    if (e.shiftKey) {
-        // Horizontal scroll
-        panX -= e.deltaY;
-    } else {
+    if (e.ctrlKey) {
         // Zoom
         const zoomIntensity = 0.05;
         const scroll = e.deltaY < 0 ? 1 : -1;
@@ -268,6 +265,12 @@ contentSection.addEventListener('wheel', (e) => {
 
         panX += (mouseAfterZoomX - mouseBeforeZoomX) * scale;
         panY += (mouseAfterZoomY - mouseBeforeZoomY) * scale;
+    } else if (e.shiftKey) {
+        // Horizontal scroll
+        panX -= e.deltaY;
+    } else {
+        // Vertical scroll
+        panY -= e.deltaY;
     }
 
     drawCurrentPage();
