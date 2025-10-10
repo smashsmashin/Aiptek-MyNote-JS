@@ -2,11 +2,18 @@ const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const pageList = document.getElementById('page-list');
 const contentSection = document.getElementById('content-section');
+const canvasContainer = document.getElementById('canvas-container');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const selectionBar = document.getElementById('selection-bar');
+const minThumb = document.getElementById('min-thumb');
+const maxThumb = document.getElementById('max-thumb');
+
 
 const pages = [];
 let currentPageIndex = -1;
+let selectionMin = 0;
+let selectionMax = 0;
 
 // --- File Handling ---
 
@@ -76,8 +83,8 @@ function parseTopFile(arrayBuffer) {
 
     for (let offset = TOP_HEADER_SIZE; offset + TOP_PACKET_SIZE <= view.byteLength; offset += TOP_PACKET_SIZE) {
         const penStatus = view.getUint8(offset);
-        const y = view.getUint16(offset + 1, true); // true for little-endian
-        const x = view.getUint16(offset + 3, true); // true for little-endian
+        const y = view.getInt16(offset + 1, true); // true for little-endian
+        const x = view.getInt16(offset + 3, true); // true for little-endian
 
         if (currentPath.length === 0) {
             paths.push(currentPath);
@@ -98,6 +105,8 @@ function switchPage(index) {
     if (index < 0 || index >= pages.length) return;
 
     currentPageIndex = index;
+    selectionMin = 0;
+    selectionMax = 0;
 
     // Update active class on list items
     Array.from(pageList.children).forEach((item, i) => {
@@ -109,11 +118,12 @@ function switchPage(index) {
     });
 
     drawCurrentPage();
+    updateThumbs();
 }
 
 // --- Canvas Drawing ---
 
-const PAGE_ASPECT_RATIO = 8.5 / 11; // Letter paper
+const PAGE_ASPECT_RATIO = 210 / 297; // A4 paper
 let scale = 1;
 let panX = 0;
 let panY = 0;
@@ -122,8 +132,8 @@ let panStart = { x: 0, y: 0 };
 
 
 function resizeCanvas() {
-    const containerWidth = contentSection.clientWidth;
-    const containerHeight = contentSection.clientHeight;
+    const containerWidth = canvasContainer.clientWidth;
+    const containerHeight = canvasContainer.clientHeight;
 
     // Set canvas drawing buffer size
     canvas.width = containerWidth;
@@ -165,7 +175,7 @@ function drawCurrentPage() {
     }
 
     // --- Panning constraints ---
-    const panMargin = 10; // in pixels
+    const panMargin = 20; // in pixels
     const minX = -(paperWidth - containerWidth) - panMargin;
     const maxX = margin;
     const minY = -(paperHeight - containerHeight) - margin;
@@ -221,21 +231,21 @@ function drawCurrentPage() {
     ctx.scale(contentScale, contentScale);
 
     // --- Draw the strokes ---
-    ctx.strokeStyle = 'black';
     ctx.lineWidth = 1 / contentScale; // Keep line width consistent when zooming
 
-    ctx.beginPath();
-    page.data.forEach(path => {
+    page.data.forEach((path, i) => {
         if (path.length > 0) {
+            ctx.strokeStyle = (i >= selectionMin && i < selectionMax) ? 'blue' : 'black';
+            ctx.beginPath();
             const startPoint = path[0];
             ctx.moveTo(startPoint.x, startPoint.y);
-            for (let i = 1; i < path.length; i++) {
-                const point = path[i];
+            for (let j = 1; j < path.length; j++) {
+                const point = path[j];
                 ctx.lineTo(point.x, point.y);
             }
+            ctx.stroke();
         }
     });
-    ctx.stroke();
 
     ctx.restore(); // Restore to original state (before translate/scale/clip)
 }
@@ -276,24 +286,24 @@ contentSection.addEventListener('wheel', (e) => {
     drawCurrentPage();
 });
 
-contentSection.addEventListener('mousedown', (e) => {
+canvasContainer.addEventListener('mousedown', (e) => {
     isPanning = true;
     panStart.x = e.clientX;
     panStart.y = e.clientY;
-    contentSection.style.cursor = 'grabbing';
+    canvasContainer.style.cursor = 'grabbing';
 });
 
-contentSection.addEventListener('mouseup', () => {
+canvasContainer.addEventListener('mouseup', () => {
     isPanning = false;
-    contentSection.style.cursor = 'grab';
+    canvasContainer.style.cursor = 'grab';
 });
 
-contentSection.addEventListener('mouseleave', () => {
+canvasContainer.addEventListener('mouseleave', () => {
     isPanning = false;
-    contentSection.style.cursor = 'default';
+    canvasContainer.style.cursor = 'default';
 });
 
-contentSection.addEventListener('mousemove', (e) => {
+canvasContainer.addEventListener('mousemove', (e) => {
     if (isPanning) {
         const dx = e.clientX - panStart.x;
         const dy = e.clientY - panStart.y;
@@ -305,7 +315,163 @@ contentSection.addEventListener('mousemove', (e) => {
     }
 });
 
+// --- Selection Bar Interaction ---
+
+function updateThumbs() {
+    if (currentPageIndex < 0) return;
+    const page = pages[currentPageIndex];
+    const totalPaths = page.data.length;
+
+
+    if (totalPaths === 0) {
+        minThumb.style.top = '0%';
+        maxThumb.style.top = '0%';
+        return;
+    }
+
+    // Use totalPaths for percentage calculation to prevent thumb going off-screen
+    const minPercent = (selectionMin / totalPaths) * 100;
+    const maxPercent = (selectionMax / totalPaths) * 100;
+
+    minThumb.style.top = `${minPercent}%`;
+    maxThumb.style.top = `${maxPercent}%`;
+}
+
+
+let activeThumb = null;
+
+function onThumbMouseDown(event) {
+    if (event.target === minThumb) {
+        activeThumb = minThumb;
+    } else if (event.target === maxThumb) {
+        activeThumb = maxThumb;
+    }
+    document.addEventListener('mousemove', onThumbMouseMove);
+    document.addEventListener('mouseup', onThumbMouseUp);
+}
+
+function onThumbMouseUp() {
+    activeThumb = null;
+    document.removeEventListener('mousemove', onThumbMouseMove);
+    document.removeEventListener('mouseup', onThumbMouseUp);
+}
+
+function onThumbMouseMove(event) {
+    if (!activeThumb || currentPageIndex < 0) return;
+
+    const page = pages[currentPageIndex];
+    const totalPaths = page.data.length;
+    if (totalPaths <= 1) return;
+
+    const barRect = selectionBar.getBoundingClientRect();
+    const offsetY = event.clientY - barRect.top;
+    const percent = Math.max(0, Math.min(100, (offsetY / barRect.height) * 100));
+    const value = Math.round((totalPaths * percent) / 100);
+
+    if (activeThumb === minThumb) {
+        selectionMin = Math.min(value, selectionMax);
+    } else { // activeThumb === maxThumb
+        selectionMax = Math.max(value, selectionMin);
+    }
+
+    selectionMin = Math.max(0, selectionMin);
+    selectionMax = Math.min(totalPaths, selectionMax);
+
+
+    updateThumbs();
+    drawCurrentPage();
+}
+
+minThumb.addEventListener('mousedown', onThumbMouseDown);
+maxThumb.addEventListener('mousedown', onThumbMouseDown);
+
+function handleThumbKeyDown(event) {
+    const thumb = event.target;
+    const isArrowKey = event.key === 'ArrowUp' || event.key === 'ArrowDown';
+    let step = 0;
+
+    if (event.key === 'ArrowUp') {
+        step = -1;
+    } else if (event.key === 'ArrowDown') {
+        step = 1;
+    } else if (event.key === 'PageUp') {
+        step = -100;
+    } else if (event.key === 'PageDown') {
+        step = 100;
+    }
+
+    if (step === 0 || currentPageIndex < 0) return;
+
+    event.preventDefault();
+
+    const page = pages[currentPageIndex];
+    const totalPaths = page.data.length;
+
+    if (thumb === minThumb) {
+        selectionMin = Math.max(0, Math.min(selectionMin + step, selectionMax));
+        if (isArrowKey) {
+            console.log(`Min thumb: ${selectionMin}`);
+            if (selectionMin === selectionMax) {
+                console.log("No selected path.");
+            } else {
+                const path = page.data[selectionMin];
+                if (path) {
+                    console.log(`Path ${selectionMin}: ${JSON.stringify(path.map(p => `(${p.x},${p.y})`))}`);
+                } else {
+                    console.log("No selected path.");
+                }
+            }
+        }
+    } else { // thumb === maxThumb
+        selectionMax = Math.max(selectionMin, Math.min(selectionMax + step, totalPaths));
+        if (isArrowKey) {
+            console.log(`Max thumb: ${selectionMax}`);
+            if (selectionMin === selectionMax) {
+                console.log("No selected path.");
+            } else {
+                const pathIndex = selectionMax - 1;
+                const path = page.data[pathIndex];
+                if (path) {
+                    console.log(`Path ${pathIndex}: ${JSON.stringify(path.map(p => `(${p.x},${p.y})`))}`);
+                } else {
+                    console.log("No selected path.");
+                }
+            }
+        }
+    }
+
+    updateThumbs();
+    drawCurrentPage();
+}
+
+minThumb.addEventListener('keydown', handleThumbKeyDown);
+maxThumb.addEventListener('keydown', handleThumbKeyDown);
+
+
+// --- Deletion Handling ---
+
+function handleDeleteKey(event) {
+    if (event.key !== 'Delete' || currentPageIndex < 0) return;
+    if (selectionMin >= selectionMax) return; // No selection to delete
+
+    const confirmed = window.confirm(`Are you sure you want to delete ${selectionMax - selectionMin} selected path(s)?`);
+
+    if (confirmed) {
+        const page = pages[currentPageIndex];
+        const deleteCount = selectionMax - selectionMin;
+        page.data.splice(selectionMin, deleteCount);
+
+        // Reset selection
+        selectionMax = selectionMin;
+
+        updateThumbs();
+        drawCurrentPage();
+    }
+}
+
+window.addEventListener('keydown', handleDeleteKey);
+
 
 // Initial setup
 resizeCanvas();
-contentSection.style.cursor = 'grab';
+canvasContainer.style.cursor = 'grab';
