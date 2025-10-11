@@ -636,6 +636,100 @@ function handleDeleteKey(event) {
 window.addEventListener('keydown', handleDeleteKey);
 
 
+// --- Printing ---
+
+function printAllPages() {
+    // Create a hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const printDoc = iframe.contentWindow.document;
+
+    // Write the HTML and CSS for the print document
+    printDoc.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Print</title>
+            <style>
+                @page { size: A4 portrait; margin: 0; }
+                body { margin: 0; }
+                .page-container {
+                    width: 210mm;
+                    height: 297mm;
+                    page-break-after: always;
+                    overflow: hidden;
+                }
+                .page-container:last-child { page-break-after: avoid; }
+                canvas { width: 100%; height: 100%; }
+            </style>
+        </head>
+        <body></body>
+        </html>
+    `);
+
+    const printBody = printDoc.body;
+    pages.forEach(page => {
+        const pageContainer = printDoc.createElement('div');
+        pageContainer.className = 'page-container';
+
+        const printCanvas = printDoc.createElement('canvas');
+        const printCtx = printCanvas.getContext('2d');
+        const printWidth = 2480; // A4 @ 300 DPI
+        const printHeight = 3508;
+        printCanvas.width = printWidth;
+        printCanvas.height = printHeight;
+
+        printCtx.fillStyle = 'white';
+        printCtx.fillRect(0, 0, printWidth, printHeight);
+
+        const contentScale = printWidth / 8800;
+        printCtx.scale(contentScale, contentScale);
+        printCtx.lineWidth = 5; // Use thicker lines for printing
+        printCtx.strokeStyle = 'black';
+
+        page.data.forEach(path => {
+            if (path.length > 0) {
+                printCtx.beginPath();
+                const startPoint = path[0];
+                printCtx.moveTo(startPoint.x, startPoint.y);
+                for (let j = 1; j < path.length; j++) {
+                    const point = path[j];
+                    printCtx.lineTo(point.x, point.y);
+                }
+                printCtx.stroke();
+            }
+        });
+        pageContainer.appendChild(printCanvas);
+        printBody.appendChild(pageContainer);
+    });
+
+    printDoc.close();
+
+    // Print the iframe's content
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+
+    // Remove the iframe after a short delay
+    setTimeout(() => {
+        document.body.removeChild(iframe);
+    }, 500);
+}
+
+// Intercept Ctrl+P
+window.addEventListener('keydown', e => {
+    // Use toLowerCase() to handle CapsLock
+    if (e.ctrlKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        printAllPages();
+    }
+});
+
+
 // Initial setup
 resizeCanvas();
 canvasContainer.style.cursor = 'grab';
