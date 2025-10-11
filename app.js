@@ -654,8 +654,9 @@ function printAllPages() {
             <style>
                 @page { size: A4 portrait; margin: 0; }
                 body { margin: 0; }
-                canvas { display: block; width: 100%; height: auto; page-break-after: always; }
-                canvas:last-child { page-break-after: avoid; }
+                .page-container { page-break-after: always; }
+                .page-container:last-child { page-break-after: avoid; }
+                canvas { display: block; width: 100%; height: auto; }
             </style>
         </head>
         <body></body>
@@ -664,6 +665,9 @@ function printAllPages() {
 
     const printBody = printDoc.body;
     pages.forEach(page => {
+        const pageContainer = printDoc.createElement('div');
+        pageContainer.className = 'page-container';
+
         const printCanvas = printDoc.createElement('canvas');
         const printCtx = printCanvas.getContext('2d');
         const printWidth = 2480; // A4 @ 300 DPI
@@ -691,7 +695,8 @@ function printAllPages() {
                 printCtx.stroke();
             }
         });
-        printBody.appendChild(printCanvas);
+        pageContainer.appendChild(printCanvas);
+        printBody.appendChild(pageContainer);
     });
 
     printDoc.close();
