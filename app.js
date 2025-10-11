@@ -575,7 +575,7 @@ function addDragDropListeners() {
 // --- Deletion Handling ---
 
 function deletePage(index) {
-    if (index < 0 || index >= pages.length) return;
+    if (index < 0 || index >= pages.length) return false;
 
     const pageName = pages[index].name;
     const confirmed = window.confirm(`Are you sure you want to delete the page "${pageName}"?`);
@@ -594,7 +594,9 @@ function deletePage(index) {
             // Otherwise, the index is still valid, just re-render
             renderPageList();
         }
+        return true; // Deletion was successful
     }
+    return false; // Deletion was cancelled
 }
 
 
@@ -612,10 +614,17 @@ function handleDeleteKey(event) {
         // Reset selection
         selectionMax = selectionMin;
 
-        // If all paths are deleted, remove the page itself
+        // If all paths are deleted, attempt to remove the page itself
         if (page.data.length === 0) {
-            console.log(`Page "${page.name}" is now empty and will be removed.`);
-            deletePage(currentPageIndex); // This will handle re-rendering and switching
+            console.log(`Page "${page.name}" is now empty. Prompting for deletion.`);
+            const wasDeleted = deletePage(currentPageIndex);
+
+            // If the page was NOT deleted (e.g., user cancelled), we still
+            // need to refresh the canvas to show that the paths are gone.
+            if (!wasDeleted) {
+                updateThumbs();
+                drawCurrentPage();
+            }
         } else {
             // Otherwise, just update the view
             updateThumbs();
