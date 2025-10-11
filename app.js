@@ -569,37 +569,68 @@ let draggedIndex = null;
 function addDragDropListeners() {
     const listItems = pageList.querySelectorAll('li');
 
+    const clearIndicators = () => {
+        listItems.forEach(i => {
+            i.classList.remove('drop-indicator-top', 'drop-indicator-bottom');
+        });
+    };
+
     listItems.forEach(item => {
-        // Drag Start
         item.addEventListener('dragstart', (e) => {
             if (e.target.classList.contains('context-menu-button')) {
                 e.preventDefault();
                 return;
             }
             draggedIndex = parseInt(e.currentTarget.dataset.index, 10);
-            e.currentTarget.classList.add('dragging');
+            // Use a timeout to avoid capturing the 'dragging' state in the drag image
+            setTimeout(() => e.currentTarget.classList.add('dragging'), 0);
             e.dataTransfer.effectAllowed = 'move';
         });
 
-        // Drag Over
-        item.addEventListener('dragover', (e) => {
-            e.preventDefault(); // This is crucial to allow a drop
-        });
-
-        // Drag End
         item.addEventListener('dragend', (e) => {
+            clearIndicators();
             e.currentTarget.classList.remove('dragging');
             draggedIndex = null;
         });
 
-        // Drop
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            clearIndicators();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const isAfter = e.clientY > rect.top + rect.height / 2;
+            e.currentTarget.classList.toggle('drop-indicator-bottom', isAfter);
+            e.currentTarget.classList.toggle('drop-indicator-top', !isAfter);
+        });
+
+        item.addEventListener('dragleave', (e) => {
+             // Only clear if we are moving to an element outside the page list
+            if (!pageList.contains(e.relatedTarget)) {
+                clearIndicators();
+            }
+        });
+
         item.addEventListener('drop', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const targetIndex = parseInt(e.currentTarget.dataset.index, 10);
-            if (draggedIndex !== null && draggedIndex !== targetIndex) {
-                movePage(draggedIndex, targetIndex);
+
+            let targetIndex = parseInt(e.currentTarget.dataset.index, 10);
+            const rect = e.currentTarget.getBoundingClientRect();
+            const isAfter = e.clientY > rect.top + rect.height / 2;
+
+            clearIndicators();
+
+            if (draggedIndex === null || draggedIndex === targetIndex) return;
+
+            // If dropping in the bottom half of an item, the new index is after it
+            if (isAfter) {
+                targetIndex++;
             }
+            // Adjust index if moving an item downwards
+            if (draggedIndex < targetIndex) {
+                targetIndex--;
+            }
+
+            movePage(draggedIndex, targetIndex);
         });
     });
 }
