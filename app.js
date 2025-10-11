@@ -686,7 +686,7 @@ function printAllPages() {
 
         const contentScale = printWidth / 8800;
         printCtx.scale(contentScale, contentScale);
-        printCtx.lineWidth = 1;
+        printCtx.lineWidth = 5; // Make lines thicker for printing
         printCtx.strokeStyle = 'black';
 
         page.data.forEach(path => {
