@@ -43,30 +43,30 @@ fileInput.addEventListener('change', (e) => {
 function handleFiles(files) {
     if (files.length === 0) return;
 
-    // Don't clear on drop, append new files
     const newFiles = Array.from(files).filter(file => file);
+    let firstNewPageIndex = pages.length;
 
-    newFiles.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const pageData = parseTopFile(e.target.result);
-            const pageIndex = pages.length;
-            pages.push({ name: file.name, data: pageData });
+    const readPromises = newFiles.map(file => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const pageData = parseTopFile(e.target.result);
+                pages.push({ name: file.name, data: pageData });
+                resolve();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    });
 
-            const listItem = document.createElement('li');
-            listItem.textContent = file.name;
-            listItem.dataset.index = pageIndex;
-            listItem.addEventListener('click', () => {
-                switchPage(pageIndex);
-            });
-            pageList.appendChild(listItem);
-
-            // If it's the first file ever, display it
-            if (pageIndex === 0) {
-                switchPage(0);
-            }
-        };
-        reader.readAsArrayBuffer(file);
+    Promise.all(readPromises).then(() => {
+        renderPageList();
+        if (currentPageIndex === -1 && pages.length > 0) {
+            switchPage(0);
+        } else {
+            // Re-select the current page to ensure the view is consistent
+            // especially if files were added while a page was active.
+            switchPage(currentPageIndex);
+        }
     });
 }
 
@@ -101,22 +101,83 @@ function parseTopFile(arrayBuffer) {
 
 // --- Page Switching ---
 
-function switchPage(index) {
-    if (index < 0 || index >= pages.length) return;
+// --- Page List Rendering ---
 
-    currentPageIndex = index;
+function renderPageList() {
+    pageList.innerHTML = ''; // Clear existing list
+
+    pages.forEach((page, index) => {
+        const listItem = document.createElement('li');
+        listItem.dataset.index = index;
+        listItem.draggable = true;
+
+        if (index === currentPageIndex) {
+            listItem.classList.add('active');
+        }
+
+        const pageName = document.createElement('span');
+        pageName.className = 'page-name';
+        pageName.textContent = page.name;
+        // Clicking the name switches to the page
+        pageName.addEventListener('click', () => switchPage(index));
+
+        const pageActions = document.createElement('div');
+        pageActions.className = 'page-actions';
+
+        const upButton = document.createElement('button');
+        upButton.textContent = '▲';
+        upButton.title = 'Move Up';
+        upButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent page switch
+            movePage(index, index - 1);
+        });
+
+        const downButton = document.createElement('button');
+        downButton.textContent = '▼';
+        downButton.title = 'Move Down';
+        downButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent page switch
+            movePage(index, index + 1);
+        });
+
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = '✖';
+        deleteButton.title = 'Delete Page';
+        deleteButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent page switch
+            deletePage(index);
+        });
+
+        pageActions.appendChild(upButton);
+        pageActions.appendChild(downButton);
+        pageActions.appendChild(deleteButton);
+        listItem.appendChild(pageName);
+        listItem.appendChild(pageActions);
+        pageList.appendChild(listItem);
+    });
+
+    // Add drag-and-drop event listeners
+    addDragDropListeners();
+}
+
+function switchPage(index) {
+    if (index < 0 || index >= pages.length) {
+        // If the current page was deleted, switch to a valid one
+        if (pages.length === 0) {
+            currentPageIndex = -1;
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+        } else {
+            currentPageIndex = Math.max(0, Math.min(index, pages.length - 1));
+        }
+    } else {
+        currentPageIndex = index;
+    }
+
+
     selectionMin = 0;
     selectionMax = 0;
 
-    // Update active class on list items
-    Array.from(pageList.children).forEach((item, i) => {
-        if (i === currentPageIndex) {
-            item.classList.add('active');
-        } else {
-            item.classList.remove('active');
-        }
-    });
-
+    renderPageList(); // Re-render to update the 'active' state
     drawCurrentPage();
     updateThumbs();
 }
@@ -448,7 +509,94 @@ minThumb.addEventListener('keydown', handleThumbKeyDown);
 maxThumb.addEventListener('keydown', handleThumbKeyDown);
 
 
+// --- Page Reordering ---
+
+function movePage(oldIndex, newIndex) {
+    if (newIndex < 0 || newIndex >= pages.length) return;
+
+    // Move the item in the array
+    const [movedPage] = pages.splice(oldIndex, 1);
+    pages.splice(newIndex, 0, movedPage);
+
+    // If the moved page was the current one, update its index
+    if (currentPageIndex === oldIndex) {
+        currentPageIndex = newIndex;
+    } else if (currentPageIndex >= newIndex && currentPageIndex < oldIndex) {
+        // If an item was moved to before the current item, increment current item's index
+        currentPageIndex++;
+    } else if (currentPageIndex <= newIndex && currentPageIndex > oldIndex) {
+        // If an item was moved to after the current item, decrement current item's index
+        currentPageIndex--;
+    }
+
+
+    renderPageList();
+    switchPage(currentPageIndex); // Re-select the (possibly new) current page
+}
+
+let draggedIndex = null;
+
+function addDragDropListeners() {
+    const listItems = pageList.querySelectorAll('li');
+
+    listItems.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+            draggedIndex = parseInt(e.currentTarget.dataset.index, 10);
+            e.currentTarget.classList.add('dragging');
+            // Allow the drop event
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        item.addEventListener('dragend', (e) => {
+            e.currentTarget.classList.remove('dragging');
+            draggedIndex = null;
+        });
+
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault(); // This is necessary to allow a drop
+            const targetIndex = parseInt(e.currentTarget.dataset.index, 10);
+            if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                // Basic visual feedback, could be improved
+                // For example, by inserting a placeholder element
+            }
+        });
+
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const targetIndex = parseInt(e.currentTarget.dataset.index, 10);
+            if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                movePage(draggedIndex, targetIndex);
+            }
+        });
+    });
+}
+
+
 // --- Deletion Handling ---
+
+function deletePage(index) {
+    if (index < 0 || index >= pages.length) return;
+
+    const pageName = pages[index].name;
+    const confirmed = window.confirm(`Are you sure you want to delete the page "${pageName}"?`);
+
+    if (confirmed) {
+        pages.splice(index, 1);
+
+        // Adjust currentPageIndex if necessary
+        if (currentPageIndex === index) {
+            // If the deleted page was the last one, select the new last one
+            switchPage(Math.max(0, index - 1));
+        } else if (currentPageIndex > index) {
+            // If a page before the current one was deleted, decrement the index
+            switchPage(currentPageIndex - 1);
+        } else {
+            // Otherwise, the index is still valid, just re-render
+            renderPageList();
+        }
+    }
+}
+
 
 function handleDeleteKey(event) {
     if (event.key !== 'Delete' || currentPageIndex < 0) return;
@@ -464,8 +612,15 @@ function handleDeleteKey(event) {
         // Reset selection
         selectionMax = selectionMin;
 
-        updateThumbs();
-        drawCurrentPage();
+        // If all paths are deleted, remove the page itself
+        if (page.data.length === 0) {
+            console.log(`Page "${page.name}" is now empty and will be removed.`);
+            deletePage(currentPageIndex); // This will handle re-rendering and switching
+        } else {
+            // Otherwise, just update the view
+            updateThumbs();
+            drawCurrentPage();
+        }
     }
 }
 
