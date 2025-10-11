@@ -170,6 +170,7 @@ let panY = 0;
 let isPanning = false;
 let panStart = { x: 0, y: 0 };
 let splitPreview = null; // Holds info for split preview: { index, splitPoint }
+let mergePreview = null; // Holds temporary data for merge preview
 
 
 function resizeCanvas() {
@@ -246,12 +247,20 @@ function drawCurrentPage() {
 
     const baseLineWidth = 1 / contentScale;
 
-    // Handle split preview rendering
-    if (splitPreview && splitPreview.index === currentPageIndex) {
-        const splitPoint = splitPreview.splitPoint;
-        page.data.forEach((path, i) => {
+    const isMergePreview = mergePreview && mergePreview.index === currentPageIndex;
+    const isSplitPreview = splitPreview && splitPreview.index === currentPageIndex;
+    const pageToRender = isMergePreview ? mergePreview : page;
+
+    // Handle merge or split preview rendering
+    if (isMergePreview || isSplitPreview) {
+        pageToRender.data.forEach((path, i) => {
             if (path.length > 0) {
-                ctx.strokeStyle = i < splitPoint ? 'blue' : 'red';
+                if (isMergePreview) {
+                    ctx.strokeStyle = 'purple';
+                } else { // isSplitPreview
+                    const splitPoint = splitPreview.splitPoint;
+                    ctx.strokeStyle = i < splitPoint ? 'blue' : 'red';
+                }
                 ctx.lineWidth = baseLineWidth;
                 ctx.beginPath();
                 ctx.moveTo(path[0].x, path[0].y);
@@ -550,29 +559,35 @@ function mergePage(index, direction) {
     const topIndex = Math.min(index, otherIndex);
 
     const newName = `${topPage.name}-${bottomPage.name}`;
+    const mergedData = topPage.data.concat(bottomPage.data);
+
+    // Set up preview state and redraw
+    mergePreview = { index: topIndex, data: mergedData };
+    switchPage(topIndex); // Switch to the correct page and let drawCurrentPage handle the preview
+
     const message = `Are you sure you want to merge "${topPage.name}" and "${bottomPage.name}" into a new page named "${newName}"?`;
 
-    if (window.confirm(message)) {
-        const mergedData = topPage.data.concat(bottomPage.data);
-        const mergedPage = { name: newName, data: mergedData };
-
-        // Remove the two old pages and add the new one
-        pages.splice(topIndex, 2, mergedPage);
-
-        // Switch to the new merged page
-        switchPage(topIndex);
-    }
+    setTimeout(() => {
+        const confirmed = window.confirm(message);
+        if (confirmed) {
+            const mergedPage = { name: newName, data: mergedData };
+            pages.splice(topIndex, 2, mergedPage);
+            mergePreview = null; // Clear preview state
+            switchPage(topIndex); // Re-render the final merged page
+        } else {
+            mergePreview = null; // Clear preview state
+            drawCurrentPage(); // Redraw to restore the original view
+        }
+    }, 10);
 }
 
 let draggedIndex = null;
 
 function addDragDropListeners() {
-    const listItems = pageList.querySelectorAll('li');
+    const listItems = Array.from(pageList.querySelectorAll('li'));
 
     const clearIndicators = () => {
-        listItems.forEach(i => {
-            i.classList.remove('drop-indicator-top', 'drop-indicator-bottom');
-        });
+        listItems.forEach(i => i.classList.remove('drop-indicator-top', 'drop-indicator-bottom'));
     };
 
     listItems.forEach(item => {
@@ -582,56 +597,64 @@ function addDragDropListeners() {
                 return;
             }
             draggedIndex = parseInt(e.currentTarget.dataset.index, 10);
-            // Use a timeout to avoid capturing the 'dragging' state in the drag image
             setTimeout(() => e.currentTarget.classList.add('dragging'), 0);
             e.dataTransfer.effectAllowed = 'move';
         });
 
-        item.addEventListener('dragend', (e) => {
+        item.addEventListener('dragend', () => {
             clearIndicators();
-            e.currentTarget.classList.remove('dragging');
+            item.classList.remove('dragging');
             draggedIndex = null;
         });
 
         item.addEventListener('dragover', (e) => {
             e.preventDefault();
-            clearIndicators();
-            const rect = e.currentTarget.getBoundingClientRect();
+            const rect = item.getBoundingClientRect();
             const isAfter = e.clientY > rect.top + rect.height / 2;
-            e.currentTarget.classList.toggle('drop-indicator-bottom', isAfter);
-            e.currentTarget.classList.toggle('drop-indicator-top', !isAfter);
+
+            // Clear previous indicators before setting a new one
+            clearIndicators();
+
+            if (isAfter) {
+                item.classList.add('drop-indicator-bottom');
+            } else {
+                item.classList.add('drop-indicator-top');
+            }
         });
 
-        item.addEventListener('dragleave', (e) => {
-             // Only clear if we are moving to an element outside the page list
-            if (!pageList.contains(e.relatedTarget)) {
-                clearIndicators();
-            }
+        item.addEventListener('dragleave', () => {
+            // This event is tricky, a global clear on dragend/drop is more reliable
         });
 
         item.addEventListener('drop', (e) => {
             e.preventDefault();
             e.stopPropagation();
 
-            let targetIndex = parseInt(e.currentTarget.dataset.index, 10);
-            const rect = e.currentTarget.getBoundingClientRect();
+            const rect = item.getBoundingClientRect();
             const isAfter = e.clientY > rect.top + rect.height / 2;
+            let targetIndex = parseInt(item.dataset.index, 10);
 
             clearIndicators();
 
             if (draggedIndex === null || draggedIndex === targetIndex) return;
 
-            // If dropping in the bottom half of an item, the new index is after it
             if (isAfter) {
                 targetIndex++;
             }
-            // Adjust index if moving an item downwards
             if (draggedIndex < targetIndex) {
                 targetIndex--;
             }
 
             movePage(draggedIndex, targetIndex);
         });
+    });
+
+    // A final cleanup listener on the parent
+    pageList.addEventListener('dragend', clearIndicators);
+    pageList.addEventListener('dragleave', (e) => {
+        if (e.target === pageList) {
+            clearIndicators();
+        }
     });
 }
 

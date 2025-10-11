@@ -85,12 +85,10 @@
             background: #e0e0ff;
         }
         #page-list li.drop-indicator-top {
-            border-top: 2px solid dodgerblue;
-            /* To prevent layout shift */
-            margin-top: -2px;
+            box-shadow: inset 0 2px 0 0 dodgerblue;
         }
         #page-list li.drop-indicator-bottom {
-            border-bottom: 2px solid dodgerblue;
+            box-shadow: inset 0 -2px 0 0 dodgerblue;
         }
         .context-menu-button {
             background: none;
