@@ -636,6 +636,63 @@ function handleDeleteKey(event) {
 window.addEventListener('keydown', handleDeleteKey);
 
 
+// --- Printing ---
+
+function prepareForPrint() {
+    const printContainer = document.createElement('div');
+    printContainer.id = 'print-container';
+    // Don't hide it, the print CSS will handle visibility
+    document.body.appendChild(printContainer);
+
+    pages.forEach(page => {
+        const printCanvas = document.createElement('canvas');
+        const printCtx = printCanvas.getContext('2d');
+
+        // Set canvas size to match A4 aspect ratio for high-quality printing
+        const printWidth = 2480; // A4 at 300 DPI
+        const printHeight = 3508;
+        printCanvas.width = printWidth;
+        printCanvas.height = printHeight;
+
+        // Draw white background
+        printCtx.fillStyle = 'white';
+        printCtx.fillRect(0, 0, printWidth, printHeight);
+
+        // Set up coordinate system for drawing content
+        const contentScale = printWidth / 8800; // TOP files have a width of 8800 units
+        printCtx.scale(contentScale, contentScale);
+        printCtx.lineWidth = 1; // Use a fine line for printing
+
+        // Draw the strokes
+        printCtx.strokeStyle = 'black';
+        page.data.forEach(path => {
+            if (path.length > 0) {
+                printCtx.beginPath();
+                const startPoint = path[0];
+                printCtx.moveTo(startPoint.x, startPoint.y);
+                for (let j = 1; j < path.length; j++) {
+                    const point = path[j];
+                    printCtx.lineTo(point.x, point.y);
+                }
+                printCtx.stroke();
+            }
+        });
+
+        printContainer.appendChild(printCanvas);
+    });
+}
+
+function cleanupAfterPrint() {
+    const printContainer = document.getElementById('print-container');
+    if (printContainer) {
+        document.body.removeChild(printContainer);
+    }
+}
+
+window.addEventListener('beforeprint', prepareForPrint);
+window.addEventListener('afterprint', cleanupAfterPrint);
+
+
 // Initial setup
 resizeCanvas();
 canvasContainer.style.cursor = 'grab';

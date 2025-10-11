@@ -140,6 +140,31 @@
         .thumb:focus {
             box-shadow: 0 0 0 2px rgba(108, 117, 125, 0.5);
         }
+
+        @media print {
+            /* Hide the main application UI */
+            body > .main-container {
+                display: none;
+            }
+
+            /* Show only the print container */
+            body > #print-container {
+                display: block;
+            }
+
+            /* Ensure canvases are printed correctly */
+            #print-container canvas {
+                width: 100%;
+                height: 100%;
+                page-break-after: always; /* Each canvas on a new page */
+                display: block; /* Ensure it's a block element */
+            }
+
+            /* Hide the last page break */
+            #print-container canvas:last-child {
+                page-break-after: avoid;
+            }
+        }
     </style>
 </head>
 <body>
