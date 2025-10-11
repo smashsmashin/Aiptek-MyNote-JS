@@ -45,8 +45,11 @@
         }
         #page-list li {
             padding: 10px;
-            cursor: pointer;
+            cursor: grab;
             border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         #page-list li:hover {
             background-color: #f0f0f0;
@@ -54,6 +57,32 @@
         #page-list li.active {
             background-color: #e0e0ff;
             font-weight: bold;
+        }
+        #page-list li .page-name {
+            flex-grow: 1;
+            /* Prevent text selection while dragging */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #page-list li .page-actions {
+            display: flex;
+            gap: 5px;
+        }
+        #page-list li .page-actions button {
+            background: none;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 2px 5px;
+        }
+        #page-list li .page-actions button:hover {
+            background-color: #f0f0f0;
+        }
+        #page-list li.dragging {
+            opacity: 0.5;
+            background: #e0e0ff;
         }
         #content-section {
             flex-grow: 1;
