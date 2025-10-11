@@ -653,10 +653,16 @@ function printAllPages() {
             <title>Print</title>
             <style>
                 @page { size: A4 portrait; margin: 0; }
-                body { margin: 0; }
-                .page-container { page-break-after: always; }
+                body { margin: 0; background-color: #eee; }
+                .page-container {
+                    width: 210mm;
+                    height: 297mm;
+                    page-break-after: always;
+                    background-color: white;
+                    overflow: hidden; /* Ensure content doesn't spill */
+                }
                 .page-container:last-child { page-break-after: avoid; }
-                canvas { display: block; width: 100%; height: auto; }
+                canvas { width: 100%; height: 100%; }
             </style>
         </head>
         <body></body>
