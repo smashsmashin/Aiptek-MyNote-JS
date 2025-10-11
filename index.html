@@ -84,6 +84,46 @@
             opacity: 0.5;
             background: #e0e0ff;
         }
+        #page-list li.drop-indicator-top {
+            box-shadow: inset 0 2px 0 0 dodgerblue;
+        }
+        #page-list li.drop-indicator-bottom {
+            box-shadow: inset 0 -2px 0 0 dodgerblue;
+        }
+        .context-menu-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 0 5px;
+            line-height: 1;
+        }
+        .context-menu {
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+            z-index: 1000;
+            list-style: none;
+            padding: 5px 0;
+            margin: 0;
+        }
+        .context-menu li {
+            padding: 8px 15px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .context-menu li:hover:not(.disabled) {
+            background: #f0f0f0;
+        }
+        .context-menu li.disabled {
+            color: #aaa;
+            cursor: not-allowed;
+        }
+        .context-menu hr {
+            border: none;
+            border-top: 1px solid #eee;
+            margin: 5px 0;
+        }
         #content-section {
             flex-grow: 1;
             background-color: #e0e0e0; /* lightgray */
