@@ -116,10 +116,12 @@ function renderPageList() {
             listItem.classList.add('active');
         }
 
+        // Make the entire list item clickable, not just the text
+        listItem.addEventListener('click', () => switchPage(index));
+
         const pageName = document.createElement('span');
         pageName.className = 'page-name';
         pageName.textContent = page.name;
-        pageName.addEventListener('click', () => switchPage(index));
 
         const menuButton = document.createElement('button');
         menuButton.className = 'context-menu-button';
@@ -288,27 +290,29 @@ function splitPage(index) {
     drawCurrentPage();
 
     const message = `Split this page into two? Page "a" will have ${splitPoint} paths (blue), and page "b" will have ${page.data.length - splitPoint} paths (red).`;
-    const confirmed = window.confirm(message);
 
-    if (confirmed) {
-        const originalName = page.name;
-        const dataA = page.data.slice(0, splitPoint);
-        const dataB = page.data.slice(splitPoint);
+    // Use a timeout to allow the canvas to redraw *before* the confirm dialog blocks the main thread
+    setTimeout(() => {
+        const confirmed = window.confirm(message);
 
-        const pageA = { name: `${originalName}-a`, data: dataA };
-        const pageB = { name: `${originalName}-b`, data: dataB };
+        if (confirmed) {
+            const originalName = page.name;
+            const dataA = page.data.slice(0, splitPoint);
+            const dataB = page.data.slice(splitPoint);
 
-        // Replace original page with the two new pages
-        pages.splice(index, 1, pageA, pageB);
+            const pageA = { name: `${originalName}-a`, data: dataA };
+            const pageB = { name: `${originalName}-b`, data: dataB };
 
-        // Reset preview and switch to the first new page
-        splitPreview = null;
-        switchPage(index);
-    } else {
-        // If cancelled, reset preview and redraw
-        splitPreview = null;
-        drawCurrentPage();
-    }
+            pages.splice(index, 1, pageA, pageB);
+
+            splitPreview = null;
+            switchPage(index);
+        } else {
+            // If cancelled, reset preview and redraw
+            splitPreview = null;
+            drawCurrentPage();
+        }
+    }, 10); // A small delay is enough
 }
 
 
@@ -567,7 +571,8 @@ function addDragDropListeners() {
 
     listItems.forEach(item => {
         item.addEventListener('dragstart', (e) => {
-            if (!e.target.classList.contains('page-name')) {
+            // Allow dragging from the list item, but not if the button was the target
+            if (e.target.classList.contains('context-menu-button')) {
                 e.preventDefault();
                 return;
             }
