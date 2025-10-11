@@ -570,42 +570,36 @@ function addDragDropListeners() {
     const listItems = pageList.querySelectorAll('li');
 
     listItems.forEach(item => {
+        // Drag Start
         item.addEventListener('dragstart', (e) => {
-            // Allow dragging from the list item, but not if the button was the target
             if (e.target.classList.contains('context-menu-button')) {
                 e.preventDefault();
                 return;
             }
             draggedIndex = parseInt(e.currentTarget.dataset.index, 10);
-            setTimeout(() => e.currentTarget.classList.add('dragging'), 0);
+            e.currentTarget.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
         });
 
+        // Drag Over
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault(); // This is crucial to allow a drop
+        });
+
+        // Drag End
         item.addEventListener('dragend', (e) => {
             e.currentTarget.classList.remove('dragging');
             draggedIndex = null;
         });
 
-        item.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            const draggingItem = document.querySelector('.dragging');
-            if (!draggingItem || e.currentTarget === draggingItem) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const isAfter = e.clientY > rect.top + rect.height / 2;
-            if (isAfter) {
-                e.currentTarget.parentNode.insertBefore(draggingItem, e.currentTarget.nextSibling);
-            } else {
-                e.currentTarget.parentNode.insertBefore(draggingItem, e.currentTarget);
-            }
-        });
-
+        // Drop
         item.addEventListener('drop', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const droppedItem = document.querySelector('.dragging');
-            if (draggedIndex === null || !droppedItem) return;
-            const newIndex = Array.from(pageList.children).indexOf(droppedItem);
-            movePage(draggedIndex, newIndex);
+            const targetIndex = parseInt(e.currentTarget.dataset.index, 10);
+            if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                movePage(draggedIndex, targetIndex);
+            }
         });
     });
 }
