@@ -639,13 +639,17 @@ window.addEventListener('keydown', handleDeleteKey);
 // --- Printing ---
 
 function printAllPages() {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-        alert('Please allow popups to print.');
-        return;
-    }
+    // Create a hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
 
-    const printDoc = printWindow.document;
+    const printDoc = iframe.contentWindow.document;
+
+    // Write the HTML and CSS for the print document
     printDoc.write(`
         <!DOCTYPE html>
         <html>
@@ -653,13 +657,12 @@ function printAllPages() {
             <title>Print</title>
             <style>
                 @page { size: A4 portrait; margin: 0; }
-                body { margin: 0; background-color: #eee; }
+                body { margin: 0; }
                 .page-container {
                     width: 210mm;
                     height: 297mm;
                     page-break-after: always;
-                    background-color: white;
-                    overflow: hidden; /* Ensure content doesn't spill */
+                    overflow: hidden;
                 }
                 .page-container:last-child { page-break-after: avoid; }
                 canvas { width: 100%; height: 100%; }
@@ -686,7 +689,7 @@ function printAllPages() {
 
         const contentScale = printWidth / 8800;
         printCtx.scale(contentScale, contentScale);
-        printCtx.lineWidth = 5; // Make lines thicker for printing
+        printCtx.lineWidth = 5; // Use thicker lines for printing
         printCtx.strokeStyle = 'black';
 
         page.data.forEach(path => {
@@ -707,13 +710,14 @@ function printAllPages() {
 
     printDoc.close();
 
-    // Wait for content to be loaded before printing
-    printWindow.onload = () => {
-        printWindow.focus();
-        printWindow.print();
-        // Closing the window automatically can be problematic
-        // printWindow.close();
-    };
+    // Print the iframe's content
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+
+    // Remove the iframe after a short delay
+    setTimeout(() => {
+        document.body.removeChild(iframe);
+    }, 500);
 }
 
 // Intercept Ctrl+P
