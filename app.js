@@ -638,33 +638,47 @@ window.addEventListener('keydown', handleDeleteKey);
 
 // --- Printing ---
 
-function prepareForPrint() {
-    const printContainer = document.createElement('div');
-    printContainer.id = 'print-container';
-    // Don't hide it, the print CSS will handle visibility
-    document.body.appendChild(printContainer);
+function printAllPages() {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        alert('Please allow popups to print.');
+        return;
+    }
 
+    const printDoc = printWindow.document;
+    printDoc.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Print</title>
+            <style>
+                @page { size: A4 portrait; margin: 0; }
+                body { margin: 0; }
+                canvas { display: block; width: 100%; height: auto; page-break-after: always; }
+                canvas:last-child { page-break-after: avoid; }
+            </style>
+        </head>
+        <body></body>
+        </html>
+    `);
+
+    const printBody = printDoc.body;
     pages.forEach(page => {
-        const printCanvas = document.createElement('canvas');
+        const printCanvas = printDoc.createElement('canvas');
         const printCtx = printCanvas.getContext('2d');
-
-        // Set canvas size to match A4 aspect ratio for high-quality printing
-        const printWidth = 2480; // A4 at 300 DPI
+        const printWidth = 2480; // A4 @ 300 DPI
         const printHeight = 3508;
         printCanvas.width = printWidth;
         printCanvas.height = printHeight;
 
-        // Draw white background
         printCtx.fillStyle = 'white';
         printCtx.fillRect(0, 0, printWidth, printHeight);
 
-        // Set up coordinate system for drawing content
-        const contentScale = printWidth / 8800; // TOP files have a width of 8800 units
+        const contentScale = printWidth / 8800;
         printCtx.scale(contentScale, contentScale);
-        printCtx.lineWidth = 1; // Use a fine line for printing
-
-        // Draw the strokes
+        printCtx.lineWidth = 1;
         printCtx.strokeStyle = 'black';
+
         page.data.forEach(path => {
             if (path.length > 0) {
                 printCtx.beginPath();
@@ -677,20 +691,28 @@ function prepareForPrint() {
                 printCtx.stroke();
             }
         });
-
-        printContainer.appendChild(printCanvas);
+        printBody.appendChild(printCanvas);
     });
+
+    printDoc.close();
+
+    // Wait for content to be loaded before printing
+    printWindow.onload = () => {
+        printWindow.focus();
+        printWindow.print();
+        // Closing the window automatically can be problematic
+        // printWindow.close();
+    };
 }
 
-function cleanupAfterPrint() {
-    const printContainer = document.getElementById('print-container');
-    if (printContainer) {
-        document.body.removeChild(printContainer);
+// Intercept Ctrl+P
+window.addEventListener('keydown', e => {
+    // Use toLowerCase() to handle CapsLock
+    if (e.ctrlKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        printAllPages();
     }
-}
-
-window.addEventListener('beforeprint', prepareForPrint);
-window.addEventListener('afterprint', cleanupAfterPrint);
+});
 
 
 // Initial setup
