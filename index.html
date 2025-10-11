@@ -142,6 +142,17 @@
         }
 
         @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+
+            html, body {
+                width: 210mm;
+                height: 297mm;
+                margin: 0;
+                padding: 0;
+            }
             /* Hide the main application UI */
             body > .main-container {
                 display: none;
@@ -156,8 +167,8 @@
             #print-container canvas {
                 width: 100%;
                 height: 100%;
-                page-break-after: always; /* Each canvas on a new page */
                 display: block; /* Ensure it's a block element */
+                page-break-after: always; /* Each canvas on a new page */
             }
 
             /* Hide the last page break */
