@@ -9,6 +9,16 @@ const selectionBar = document.getElementById('selection-bar');
 const minThumb = document.getElementById('min-thumb');
 const maxThumb = document.getElementById('max-thumb');
 
+const authContainer = document.getElementById('auth-container');
+const userProfile = document.getElementById('user-profile');
+const userAvatar = document.getElementById('user-avatar');
+const userName = document.getElementById('user-name');
+const signOutButton = document.getElementById('sign-out-button');
+const cloudActions = document.getElementById('cloud-actions');
+const gIdSignin = document.querySelector('.g_id_signin');
+const fetchButton = document.getElementById('fetch-button');
+const storeButton = document.getElementById('store-button');
+
 
 const pages = [];
 let currentPageIndex = -1;
@@ -811,6 +821,187 @@ function startRenaming(index) {
     pageNameSpan.replaceWith(input);
     input.focus();
     input.select();
+}
+
+
+// --- Google Sign-In ---
+
+function onSignIn(googleUser) {
+    const credential = googleUser.credential;
+    const profile = JSON.parse(atob(credential.split('.')[1])); // Decode JWT
+
+    // Update UI
+    userAvatar.src = profile.picture;
+    userName.textContent = profile.name;
+
+    gIdSignin.style.display = 'none';
+    userProfile.style.display = 'block';
+    cloudActions.style.display = 'block';
+}
+
+function signOut() {
+    google.accounts.id.disableAutoSelect();
+    // Potentially revoke token here if needed, but for now, just update UI
+
+    gIdSignin.style.display = 'block';
+    userProfile.style.display = 'none';
+    cloudActions.style.display = 'none';
+}
+
+signOutButton.addEventListener('click', signOut);
+
+// --- Google Drive Integration ---
+
+// IMPORTANT: For production, these values should not be hardcoded in the client-side code.
+// They should be stored securely on a backend server and fetched by the client when needed.
+const API_KEY = 'YOUR_API_KEY'; // TODO: Replace with your API key
+const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com'; // TODO: Replace with your Client ID
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+let tokenClient;
+let gapiInited = false;
+let gisInited = false;
+
+function gapiLoaded() {
+    gapi.load('client:picker', initializeGapiClient);
+}
+
+async function initializeGapiClient() {
+    await gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+    });
+    gapiInited = true;
+}
+
+function gisLoaded() {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: '', // defined later
+    });
+    gisInited = true;
+}
+
+fetchButton.addEventListener('click', () => handleAuthClick('fetch'));
+storeButton.addEventListener('click', () => handleAuthClick('store'));
+
+function handleAuthClick(action) {
+    if (gapi.client.getToken() === null) {
+        tokenClient.callback = (resp) => {
+            if (resp.error !== undefined) {
+                throw (resp);
+            }
+            if (action === 'fetch') createPicker();
+            else if (action === 'store') uploadCurrentPage();
+        };
+
+        if (google.accounts.oauth2.hasGrantedAllScopes(gapi.client.getToken(), SCOPES)) {
+             if (action === 'fetch') createPicker();
+             else if (action === 'store') uploadCurrentPage();
+        } else {
+            tokenClient.requestAccessToken({prompt: 'consent'});
+        }
+    } else {
+        if (action === 'fetch') createPicker();
+        else if (action === 'store') uploadCurrentPage();
+    }
+}
+
+function createPicker() {
+    const view = new google.picker.View(google.picker.ViewId.DOCS);
+    view.setMimeTypes("application/octet-stream"); // Adjust if you have a more specific MIME type
+
+    const picker = new google.picker.PickerBuilder()
+        .setAppId(CLIENT_ID.split('.')[0])
+        .setOAuthToken(gapi.client.getToken().access_token)
+        .addView(view)
+        .setDeveloperKey(API_KEY)
+        .setCallback(pickerCallback)
+        .build();
+    picker.setVisible(true);
+}
+
+async function pickerCallback(data) {
+    if (data.action === google.picker.Action.PICKED) {
+        const fileId = data.docs[0].id;
+        const fileName = data.docs[0].name;
+
+        const res = await gapi.client.drive.files.get({
+            fileId: fileId,
+            alt: 'media'
+        });
+
+        const fileContent = new Blob([res.body], { type: 'application/octet-stream' });
+        const file = new File([fileContent], fileName);
+        handleFiles([file]);
+    }
+}
+
+const TOP_HEADER_SIZE = 32;
+const TOP_PACKET_SIZE = 6;
+const TOP_HEIGHT = 12000;
+
+function convertToTop(pageData) {
+    const header = new ArrayBuffer(TOP_HEADER_SIZE);
+    const packets = [];
+
+    pageData.forEach(path => {
+        if (path.length > 0) {
+            path.forEach((point, index) => {
+                const packet = new ArrayBuffer(TOP_PACKET_SIZE);
+                const view = new DataView(packet);
+                const penStatus = (index === path.length - 1) ? 0 : 1;
+                view.setUint8(0, penStatus);
+                view.setInt16(1, TOP_HEIGHT - point.y, true);
+                view.setInt16(3, point.x, true);
+                packets.push(packet);
+            });
+        }
+    });
+
+    const totalSize = TOP_HEADER_SIZE + packets.length * TOP_PACKET_SIZE;
+    const combined = new Uint8Array(totalSize);
+    combined.set(new Uint8Array(header), 0);
+    let offset = TOP_HEADER_SIZE;
+    packets.forEach(packet => {
+        combined.set(new Uint8Array(packet), offset);
+        offset += TOP_PACKET_SIZE;
+    });
+
+    return new Blob([combined], { type: 'application/octet-stream' });
+}
+
+
+async function uploadCurrentPage() {
+    if (currentPageIndex < 0 || pages.length === 0) {
+        alert("No page selected to store.");
+        return;
+    }
+
+    const page = pages[currentPageIndex];
+    const topFileBlob = convertToTop(page.data);
+    const fileName = page.name;
+
+    const metadata = {
+        name: fileName,
+        mimeType: 'application/octet-stream',
+    };
+
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', topFileBlob);
+
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: new Headers({ 'Authorization': 'Bearer ' + gapi.client.getToken().access_token }),
+        body: form,
+    });
+
+    if (res.ok) {
+        alert(`File "${fileName}" uploaded successfully.`);
+    } else {
+        alert(`Error uploading file: ${res.statusText}`);
+    }
 }
 
 
