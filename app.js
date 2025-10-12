@@ -854,8 +854,8 @@ signOutButton.addEventListener('click', signOut);
 
 // IMPORTANT: For production, these values should not be hardcoded in the client-side code.
 // They should be stored securely on a backend server and fetched by the client when needed.
-const API_KEY = 'AIzaSyApsB1-wDGrT6wsL5cV1vv99kLWayV-1og'; // TODO: Replace with your API key
-const CLIENT_ID = '414398931859-h04be241u8er4lgiun26qpavdjrnqecc.apps.googleusercontent.com'; // TODO: Replace with your Client ID
+const API_KEY = GOOGLE_API_KEY; // Using value from config.js
+const CLIENT_ID = GOOGLE_CLIENT_ID; // Using value from config.js
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 let gapiInited = false;
