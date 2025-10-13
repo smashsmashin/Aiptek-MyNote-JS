@@ -21,16 +21,25 @@ jobs:
       - name: Install Terser
         run: npm install terser -g
 
-      - name: Replace placeholders with secrets
-        run: |
-          # For index.html, replace the raw placeholder. Use | as a delimiter for safety.
-          sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' index.html
+      - name: Replace placeholder in index.html
+        uses: datamonsters/replace-action@v2
+        with:
+          files: 'index.html'
+          replacements: 'PLACEHOLDER_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}'
 
-          # For app.js, Base64 encode the secrets and then replace.
-          API_KEY_B64=$(echo -n "${{ secrets.GOOGLE_API_KEY }}" | base64)
-          CLIENT_ID_B64=$(echo -n "${{ secrets.GOOGLE_CLIENT_ID }}" | base64)
-          sed -i "s|PLACEHOLDER_API_KEY|$API_KEY_B64|g" app.js
-          sed -i "s|PLACEHOLDER_CLIENT_ID|$CLIENT_ID_B64|g" app.js
+      - name: Base64-encode secrets
+        id: b64_secrets
+        run: |
+          echo "API_KEY_B64=$(echo -n ${{ secrets.GOOGLE_API_KEY }} | base64)" >> $GITHUB_OUTPUT
+          echo "CLIENT_ID_B64=$(echo -n ${{ secrets.GOOGLE_CLIENT_ID }} | base64)" >> $GITHUB_OUTPUT
+
+      - name: Replace placeholders in app.js
+        uses: datamonsters/replace-action@v2
+        with:
+          files: 'app.js'
+          replacements: |
+            PLACEHOLDER_API_KEY=${{ steps.b64_secrets.outputs.API_KEY_B64 }}
+            PLACEHOLDER_CLIENT_ID=${{ steps.b64_secrets.outputs.CLIENT_ID_B64 }}
 
       - name: Minify and Obfuscate JavaScript
         run: terser app.js --compress --mangle --output app.js
