@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Build and Deploy to GitHub Pages
 
 on:
   push:
@@ -13,11 +13,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Terser
+        run: npm install terser -g
+
       - name: Replace placeholders with secrets
         run: |
-          sed -i 's|PLACEHOLDER_API_KEY|${{ secrets.GOOGLE_API_KEY }}|g' app.js
-          sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' app.js
-          sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' index.html
+          # Base64 encode the secrets for app.js
+          API_KEY_B64=$(echo -n "${{ secrets.GOOGLE_API_KEY }}" | base64)
+          CLIENT_ID_B64=$(echo -n "${{ secrets.GOOGLE_CLIENT_ID }}" | base64)
+          sed -i "s|PLACEHOLDER_API_KEY|$API_KEY_B64|g" app.js
+          sed -i "s|PLACEHOLDER_CLIENT_ID|$CLIENT_ID_B64|g" app.js
+
+          # Replace the raw placeholder in index.html
+          sed -i "s|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g" index.html
+
+      - name: Minify and Obfuscate JavaScript
+        run: terser app.js --compress --mangle --output app.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
