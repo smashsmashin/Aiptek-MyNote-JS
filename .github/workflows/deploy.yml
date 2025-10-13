@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - feat/google-signin-drive
+      - feat/obfuscate-api-key
 
 jobs:
   build-and-deploy:
@@ -30,12 +30,47 @@ jobs:
       - name: Copy files to build directory
         run: cp app.js index.html dist/
 
+      - name: Create injection script
+        run: |
+          cat << 'EOF' > inject.js
+          const fs = require('fs');
+          const [,, salt, apiKey, file] = process.argv;
+
+          const textToChars = (text) => text.split("").map((c) => c.charCodeAt(0));
+          const byteHex = (n) => ("0" + Number(n).toString(16)).substr(-2);
+          const applySaltToChar = (code) => textToChars(salt).reduce((a, b) => a ^ b, code);
+
+          const encodedKey = apiKey
+            .split("")
+            .map(c => c.charCodeAt(0))
+            .map(applySaltToChar)
+            .map(byteHex)
+            .join("");
+
+          const replacement = `(
+            (salt, encoded) => {
+              const textToChars = (text) => text.split("").map((c) => c.charCodeAt(0));
+              const applySaltToChar = (code) => textToChars(salt).reduce((a, b) => a ^ b, code);
+              return encoded
+                .match(/.{1,2}/g)
+                .map((hex) => parseInt(hex, 16))
+                .map(applySaltToChar)
+                .map((charCode) => String.fromCharCode(charCode))
+                .join("");
+            }
+          )('${salt}', '${encodedKey}')`;
+
+          const content = fs.readFileSync(file, 'utf8');
+          const newContent = content.replace(`'PLACEHOLDER_API_KEY'`, replacement);
+          fs.writeFileSync(file, newContent, 'utf8');
+          EOF
+
       - name: Replace placeholders with secrets
         run: |
-          sed -i 's|PLACEHOLDER_API_KEY|${{ secrets.GOOGLE_API_KEY }}|g' dist/app.js
-          sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' dist/app.js
-          sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' dist/index.html
-          # Update index.html to load the minified script
+          SALT=$(openssl rand -hex 16)
+          node inject.js "$SALT" "${{ secrets.GOOGLE_API_KEY }}" "dist/app.js"
+          sed -i "s|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g" dist/app.js
+          sed -i "s|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g" dist/index.html
           sed -i 's|app.js|app.min.js|g' dist/index.html
 
       - name: Bundle, Minify, and Obfuscate JavaScript
