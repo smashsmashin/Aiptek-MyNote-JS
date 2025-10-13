@@ -21,16 +21,23 @@ jobs:
       - name: Install Terser
         run: npm install terser -g
 
-      - name: Replace placeholders with secrets
+      - name: Replace placeholder in index.html
+        uses: clementvanstaen/replace-string-action@v1
+        with:
+          string_to_replace: 'PLACEHOLDER_CLIENT_ID'
+          string_to_go: ${{ secrets.GOOGLE_CLIENT_ID }}
+          file: index.html
+
+      - name: Base64-encode and replace placeholders in app.js
         run: |
-          # Base64 encode the secrets for app.js
+          # Base64 encode the secrets
           API_KEY_B64=$(echo -n "${{ secrets.GOOGLE_API_KEY }}" | base64)
           CLIENT_ID_B64=$(echo -n "${{ secrets.GOOGLE_CLIENT_ID }}" | base64)
-          sed -i "s|PLACEHOLDER_API_KEY|$API_KEY_B64|g" app.js
-          sed -i "s|PLACEHOLDER_CLIENT_ID|$CLIENT_ID_B64|g" app.js
-
-          # Replace the raw placeholder in index.html
-          sed -i "s|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g" index.html
+          # Use a temporary file to avoid issues with sed's in-place editing
+          TMP_JS=$(mktemp)
+          # Use a different delimiter (|) for sed to handle special characters
+          sed "s|PLACEHOLDER_API_KEY|$API_KEY_B64|g" app.js > $TMP_JS && mv $TMP_JS app.js
+          sed "s|PLACEHOLDER_CLIENT_ID|$CLIENT_ID_B64|g" app.js > $TMP_JS && mv $TMP_JS app.js
 
       - name: Minify and Obfuscate JavaScript
         run: terser app.js --compress --mangle --output app.js
