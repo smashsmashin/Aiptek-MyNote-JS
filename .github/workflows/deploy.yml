@@ -21,31 +21,35 @@ jobs:
       - name: Install Terser
         run: npm install terser -g
 
-      - name: Replace placeholder in index.html
-        uses: datamonsters/replace-action@v2
-        with:
-          files: 'index.html'
-          replacements: 'PLACEHOLDER_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}'
+      - name: Create build directory
+        run: mkdir dist
 
-      - name: Base64-encode secrets
-        id: b64_secrets
+      - name: Copy files to build directory
         run: |
-          echo "API_KEY_B64=$(echo -n ${{ secrets.GOOGLE_API_KEY }} | base64 -w 0)" >> $GITHUB_OUTPUT
-          echo "CLIENT_ID_B64=$(echo -n ${{ secrets.GOOGLE_CLIENT_ID }} | base64 -w 0)" >> $GITHUB_OUTPUT
+          cp app.js dist/
+          cp index.html dist/
+          cp dummy.top dist/
+          cp LICENSE dist/
 
-      - name: Replace placeholders in app.js
-        uses: datamonsters/replace-action@v2
-        with:
-          files: 'app.js'
-          replacements: |
-            PLACEHOLDER_API_KEY=${{ steps.b64_secrets.outputs.API_KEY_B64 }}
-            PLACEHOLDER_CLIENT_ID=${{ steps.b64_secrets.outputs.CLIENT_ID_B64 }}
+      - name: Replace placeholders with secrets
+        run: |
+          # Use a different delimiter (|) to avoid issues with special characters in secrets.
+          sed -i 's|PLACEHOLDER_API_KEY|${{ secrets.GOOGLE_API_KEY }}|g' dist/app.js
+          sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' dist/app.js
+          sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' dist/index.html
 
       - name: Minify and Obfuscate JavaScript
-        run: terser app.js --compress --mangle --output app.js
+        run: terser dist/app.js --compress --mangle --output dist/app.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
+          # Deploy the contents of the 'dist' folder
+          publish_dir: ./dist
+          # The branch the action should deploy to.
+          publish_branch: gh-pages
+          # A clean deployment history
+          force_orphan: true
+          # Commit message for the deployment
+          commit_message: "Deploy to GitHub Pages"
