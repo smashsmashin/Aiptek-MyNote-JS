@@ -9,6 +9,9 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # Grant the GITHUB_TOKEN permissions to write to the gh-pages branch
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -22,34 +25,27 @@ jobs:
         run: npm install terser -g
 
       - name: Create build directory
-        run: mkdir dist
+        run: mkdir -p dist
 
       - name: Copy files to build directory
-        run: |
-          cp app.js dist/
-          cp index.html dist/
-          cp dummy.top dist/
-          cp LICENSE dist/
+        run: cp app.js index.html dist/
 
       - name: Replace placeholders with secrets
         run: |
-          # Use a different delimiter (|) to avoid issues with special characters in secrets.
           sed -i 's|PLACEHOLDER_API_KEY|${{ secrets.GOOGLE_API_KEY }}|g' dist/app.js
           sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' dist/app.js
           sed -i 's|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g' dist/index.html
+          # Update index.html to load the minified script
+          sed -i 's|app.js|app.min.js|g' dist/index.html
 
-      - name: Minify and Obfuscate JavaScript
-        run: terser dist/app.js --compress --mangle --output dist/app.js
+      - name: Bundle, Minify, and Obfuscate JavaScript
+        run: terser dist/app.js --compress --mangle --output dist/app.min.js
+
+      - name: Remove original JS file from dist
+        run: rm dist/app.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Deploy the contents of the 'dist' folder
           publish_dir: ./dist
-          # The branch the action should deploy to.
-          publish_branch: gh-pages
-          # A clean deployment history
-          force_orphan: true
-          # Commit message for the deployment
-          commit_message: "Deploy to GitHub Pages"
