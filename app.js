@@ -938,10 +938,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    const TOP_HEADER_SIZE = 32;
-    const TOP_PACKET_SIZE = 6;
-    const TOP_HEIGHT = 12000;
-
     function convertToTop(pageData) {
         const header = new ArrayBuffer(TOP_HEADER_SIZE);
         const packets = [];
