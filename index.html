@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOP File Visualizer</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: sans-serif;
+            overflow: hidden; /* Prevent body scrolling */
+        }
+        .main-container {
+            display: flex;
+            height: 100%;
+        }
+        #index-section {
+            width: 250px;
+            padding: 10px;
+            border-right: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+        }
+        #drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        #drop-zone.dragover {
+            border-color: #000;
+            background-color: #f0f0f0;
+        }
+        #page-list-container {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+        #page-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        #page-list li {
+            padding: 10px;
+            cursor: grab;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #page-list li:hover {
+            background-color: #f0f0f0;
+        }
+        #page-list li.active {
+            background-color: #e0e0ff;
+            font-weight: bold;
+        }
+        #page-list li .page-name {
+            flex-grow: 1;
+            /* Prevent text selection while dragging */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #page-list li .page-actions {
+            display: flex;
+            gap: 5px;
+        }
+        #page-list li .page-actions button {
+            background: none;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 2px 5px;
+        }
+        #page-list li .page-actions button:hover {
+            background-color: #f0f0f0;
+        }
+        #page-list li.dragging {
+            opacity: 0.5;
+            background: #e0e0ff;
+        }
+        #page-list li.drop-indicator-top {
+            box-shadow: inset 0 2px 0 0 dodgerblue;
+        }
+        #page-list li.drop-indicator-bottom {
+            box-shadow: inset 0 -2px 0 0 dodgerblue;
+        }
+        .context-menu-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 0 5px;
+            line-height: 1;
+        }
+        .context-menu {
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+            z-index: 1000;
+            list-style: none;
+            padding: 5px 0;
+            margin: 0;
+        }
+        .context-menu li {
+            padding: 8px 15px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .context-menu li:hover:not(.disabled) {
+            background: #f0f0f0;
+        }
+        .context-menu li.disabled {
+            color: #aaa;
+            cursor: not-allowed;
+        }
+        .context-menu hr {
+            border: none;
+            border-top: 1px solid #eee;
+            margin: 5px 0;
+        }
+        #content-section {
+            flex-grow: 1;
+            background-color: #e0e0e0; /* lightgray */
+            overflow: hidden; /* Canvas panning will be handled by JS */
+            position: relative;
+            display: flex; /* Use flexbox for content and selection bar */
+        }
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #selection-section {
+            width: 25px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            border-left: 1px solid #ccc;
+        }
+        #selection-bar {
+            position: relative;
+            width: 10px;
+            height: calc(100% - 20px);
+            background-color: #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .thumb {
+            position: absolute;
+            width: 20px; /* Adjusted width */
+            height: 10px;
+            background-color: darkgray;
+            border: 1px solid #666;
+            border-radius: 2px;
+            cursor: ns-resize;
+            left: -5px; /* Center the thumb */
+            outline: none;
+        }
+        #min-thumb {
+            transform: translateY(-100%); /* Align bottom edge to value */
+        }
+        #max-thumb {
+            transform: translateY(0); /* Align top edge to value */
+        }
+        .thumb:focus {
+            box-shadow: 0 0 0 2px rgba(108, 117, 125, 0.5);
+        }
+
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div id="index-section">
+            <div id="auth-container" style="padding-bottom: 10px; text-align: center;">
+                <div id="g_id_onload"
+                     data-client_id="414398931859-h04be241u8er4lgiun26qpavdjrnqecc.apps.googleusercontent.com"
+                     data-callback="onSignIn">
+                </div>
+                <div class="g_id_signin" data-type="standard"></div>
+                <div id="user-profile" style="display: none; padding-top: 10px;">
+                    <img id="user-avatar" src="" alt="User Avatar" style="width: 40px; height: 40px; border-radius: 50%;">
+                    <p id="user-name"></p>
+                    <button id="sign-out-button">Sign Out</button>
+                </div>
+            </div>
+            <div id="cloud-actions" style="display: none; padding-bottom: 10px; text-align: center;">
+                <button id="fetch-button">Fetch from Cloud</button>
+                <button id="store-button">Store to Cloud</button>
+            </div>
+            <div id="drop-zone">
+                <p>Drop TOP files here or click to select</p>
+                <input type="file" id="file-input" multiple style="display: none;">
+            </div>
+            <div id="page-list-container">
+                <ul id="page-list"></ul>
+            </div>
+        </div>
+        <div id="content-section">
+            <div id="canvas-container">
+                <canvas id="canvas"></canvas>
+            </div>
+            <div id="selection-section">
+                <div id="selection-bar">
+                    <div id="min-thumb" class="thumb" tabindex="0"></div>
+                    <div id="max-thumb" class="thumb" tabindex="0"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.min.js"></script>
+    <script async defer src="https://apis.google.com/js/api.js"></script>
+    <script async defer src="https://accounts.google.com/gsi/client"></script>
+
+</body>
+</html>
