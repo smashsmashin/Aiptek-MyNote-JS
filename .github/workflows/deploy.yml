@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/google-signin-drive
 
 jobs:
   build-and-deploy:
