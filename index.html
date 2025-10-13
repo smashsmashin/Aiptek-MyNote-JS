@@ -187,8 +187,8 @@
     <div class="main-container">
         <div id="index-section">
             <div id="auth-container" style="padding-bottom: 10px; text-align: center;">
-                <!-- The data-client_id will be set dynamically by a script -->
                 <div id="g_id_onload"
+                     data-client_id="PLACEHOLDER_CLIENT_ID"
                      data-callback="onSignIn">
                 </div>
                 <div class="g_id_signin" data-type="standard"></div>
@@ -223,20 +223,9 @@
         </div>
     </div>
 
-    <!-- SCRIPT LOADING ORDER IS CRITICAL HERE -->
-
-    <!-- 1. Load the configuration file first. -->
-    <script src="config.js"></script>
-
-    <!-- 2. Run an inline script to set the client ID attribute before Google's script loads. -->
-    <script>
-      document.getElementById('g_id_onload').setAttribute('data-client_id', GOOGLE_CLIENT_ID);
-    </script>
-
-    <!-- 3. Now load the Google libraries and your app.js. -->
+    <script src="app.js"></script>
     <script async defer src="https://apis.google.com/js/api.js"></script>
     <script async defer src="https://accounts.google.com/gsi/client"></script>
-    <script src="app.js"></script>
 
 </body>
 </html>

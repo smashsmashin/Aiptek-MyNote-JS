@@ -855,8 +855,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // IMPORTANT: For production, these values should not be hardcoded in the client-side code.
     // They should be stored securely on a backend server and fetched by the client when needed.
-    const API_KEY = GOOGLE_API_KEY; // Using value from config.js
-    const CLIENT_ID = GOOGLE_CLIENT_ID; // Using value from config.js
+    const API_KEY = 'PLACEHOLDER_API_KEY'; // This will be replaced by GitHub Actions
+    const CLIENT_ID = 'PLACEHOLDER_CLIENT_ID'; // This will be replaced by GitHub Actions
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     let tokenClient;
     let gapiInited = false;
