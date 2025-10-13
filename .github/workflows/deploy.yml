@@ -30,8 +30,8 @@ jobs:
       - name: Base64-encode secrets
         id: b64_secrets
         run: |
-          echo "API_KEY_B64=$(echo -n ${{ secrets.GOOGLE_API_KEY }} | base64)" >> $GITHUB_OUTPUT
-          echo "CLIENT_ID_B64=$(echo -n ${{ secrets.GOOGLE_CLIENT_ID }} | base64)" >> $GITHUB_OUTPUT
+          echo "API_KEY_B64=$(echo -n ${{ secrets.GOOGLE_API_KEY }} | base64 -w 0)" >> $GITHUB_OUTPUT
+          echo "CLIENT_ID_B64=$(echo -n ${{ secrets.GOOGLE_CLIENT_ID }} | base64 -w 0)" >> $GITHUB_OUTPUT
 
       - name: Replace placeholders in app.js
         uses: datamonsters/replace-action@v2
