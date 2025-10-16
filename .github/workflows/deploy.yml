@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/obfuscate-api-key
+      - firebase-integration
 
 jobs:
   build-and-deploy:
