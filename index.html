@@ -231,42 +231,6 @@
         </div>
     </div>
 
-    <script type="module">
-      // Import the functions you need from the SDKs you need
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-      import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-      import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-      // Your web app's Firebase configuration
-      const firebaseConfig = {
-        apiKey: "AIzaSyBktbaPzGVWkyC0vsiHJZDHuA5l9_0xVs8",
-        authDomain: "smash-smashin.firebaseapp.com",
-        projectId: "smash-smashin",
-        storageBucket: "smash-smashin.firebasestorage.app",
-        messagingSenderId: "260759655047",
-        appId: "1:260759655047:web:7a8931935a2557dae0de22"
-      };
-
-      // Initialize Firebase
-      const app = initializeApp(firebaseConfig);
-      const auth = getAuth(app);
-      const db = getFirestore(app);
-
-      // Expose Firebase modules to the global window object
-      window.firebase = {
-        auth,
-        db,
-        GoogleAuthProvider,
-        signInWithPopup,
-        onAuthStateChanged,
-        signOut,
-        doc,
-        setDoc,
-        getDoc,
-        collection,
-        getDocs
-      };
-    </script>
-    <script src="app.min.js"></script>
+    <script src="app.min.js" type="module"></script>
 </body>
 </html>
