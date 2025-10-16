@@ -1,22 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
-
-const firebaseConfig = {
-    apiKey: "AIzaSyBktbaPzGVWkyC0vsiHJZDHuA5l9_0xVs8",
-    authDomain: "smash-smashin.firebaseapp.com",
-    projectId: "smash-smashin",
-    storageBucket: "smash-smashin.firebasestorage.app",
-    messagingSenderId: "260759655047",
-    appId: "1:260759655047:web:7a8931935a2557dae0de22"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
@@ -452,25 +433,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (docSnap.exists()) {
                     const docData = docSnap.data();
 
-                    const pageFetchPromises = docData.pages.map(async (pageMeta) => {
-                        const response = await fetch(pageMeta.url);
-                        const arrayBuffer = await response.arrayBuffer();
-                        const pageData = parseTopFile(arrayBuffer);
-                        return { name: pageMeta.name, data: pageData };
+                    const loadedPages = docData.pages.map(pageContent => {
+                        const byteString = atob(pageContent.data);
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) {
+                            ia[i] = byteString.charCodeAt(i);
+                        }
+                        const pageData = parseTopFile(ab);
+                        return { name: pageContent.name, data: pageData };
                     });
 
-                    const loadedPages = await Promise.all(pageFetchPromises);
+                    const isSessionEmpty = pages.length === 0;
 
-                    const wasDocumentPreviouslyLoaded = pages.length > 0;
                     pages.push(...loadedPages);
 
-                    if (wasDocumentPreviouslyLoaded) {
+                    if (isSessionEmpty) {
+                        documentTitle.textContent = docNameToLoad;
+                    } else {
                         const useNewName = confirm(`Document loaded. Keep current name "${documentTitle.textContent}" or use new name "${docNameToLoad}"?`);
                         if (useNewName) {
                             documentTitle.textContent = docNameToLoad;
                         }
-                    } else {
-                        documentTitle.textContent = docNameToLoad;
                     }
 
                     renderPageList();
@@ -935,7 +919,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Blob([combined], { type: 'application/octet-stream' });
     }
 
+    const blobToBase64 = (blob) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                // The result includes the data URL prefix (e.g., "data:application/octet-stream;base64,"),
+                // which we need to strip off to get only the base64 string.
+                resolve(reader.result.split(',')[1]);
+            };
+            reader.onerror = reject;
+        });
+    };
+
     // --- Firebase Authentication ---
+    const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } = window.firebase;
     let currentUser = null;
 
     onAuthStateChanged(auth, (user) => {
@@ -970,6 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Firebase Firestore & Storage ---
+    const { doc, setDoc, getDoc, collection, getDocs } = window.firebase;
     saveButton.addEventListener('click', async () => {
         if (!currentUser) {
             alert("You must be logged in to save a document.");
@@ -984,22 +983,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!docName) return;
 
         try {
-            // Show some feedback that saving is in progress
             saveButton.disabled = true;
             saveButton.textContent = 'Saving...';
 
-            const pageUploadPromises = pages.map(async (page) => {
+            const pageDataPromises = pages.map(async (page) => {
                 const topFileBlob = convertToTop(page.data);
-                const storageRef = ref(storage, `users/${currentUser.uid}/documents/${docName}/${page.name}.top`);
-                await uploadBytes(storageRef, topFileBlob);
-                const downloadURL = await getDownloadURL(storageRef);
-                return { name: page.name, url: downloadURL };
+                const base64Data = await blobToBase64(topFileBlob);
+                return { name: page.name, data: base64Data };
             });
 
-            const pageMetadatas = await Promise.all(pageUploadPromises);
+            const pageContents = await Promise.all(pageDataPromises);
 
             const docData = {
-                pages: pageMetadatas,
+                pages: pageContents,
                 createdAt: new Date()
             };
 

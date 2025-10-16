@@ -22,30 +22,63 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install esbuild
-        run: npm install esbuild -g
+      - name: Install Terser
+        run: npm install terser -g
 
       - name: Create build directory
         run: mkdir -p dist
 
-      - name: Copy index.html to build directory
-        run: cp index.html dist/
+      - name: Copy files to build directory
+        run: cp app.js index.html dist/
 
-      - name: Replace placeholders and bundle with esbuild
+      - name: Create injection script
         run: |
-          # Since esbuild will bundle, we need to replace placeholders *before* bundling.
-          # Create a temporary app.js for the build process.
-          cp app.js temp_app.js
-          sed -i "s/AIzaSyBktbaPzGVWkyC0vsiHJZDHuA5l9_0xVs8/${{ secrets.FIREBASE_API_KEY }}/g" temp_app.js
+          cat << 'EOF' > inject.js
+          const fs = require('fs');
+          const [,, salt, apiKey, file] = process.argv;
 
-          # Bundle and minify the script
-          esbuild temp_app.js --bundle --minify --outfile=dist/app.min.js
+          const textToChars = (text) => text.split("").map((c) => c.charCodeAt(0));
+          const byteHex = (n) => ("0" + Number(n).toString(16)).substr(-2);
+          const applySaltToChar = (code) => textToChars(salt).reduce((a, b) => a ^ b, code);
 
-          # Clean up the temporary file
-          rm temp_app.js
+          const encodedKey = apiKey
+            .split("")
+            .map(c => c.charCodeAt(0))
+            .map(applySaltToChar)
+            .map(byteHex)
+            .join("");
 
-          # Update index.html to point to the minified script
-          sed -i 's|src="app.js"|src="app.min.js"|' dist/index.html
+          const replacement = `(
+            (salt, encoded) => {
+              const textToChars = (text) => text.split("").map((c) => c.charCodeAt(0));
+              const applySaltToChar = (code) => textToChars(salt).reduce((a, b) => a ^ b, code);
+              return encoded
+                .match(/.{1,2}/g)
+                .map((hex) => parseInt(hex, 16))
+                .map(applySaltToChar)
+                .map((charCode) => String.fromCharCode(charCode))
+                .join("");
+            }
+          )('${salt}', '${encodedKey}')`;
+
+          const content = fs.readFileSync(file, 'utf8');
+          const newContent = content.replace(`'PLACEHOLDER_API_KEY'`, replacement);
+          fs.writeFileSync(file, newContent, 'utf8');
+          EOF
+
+      - name: Replace placeholders with secrets
+        run: |
+          SALT=$(openssl rand -hex 16)
+          node inject.js "$SALT" "${{ secrets.GOOGLE_API_KEY }}" "dist/app.js"
+          sed -i "s|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g" dist/app.js
+          sed -i "s|PLACEHOLDER_CLIENT_ID|${{ secrets.GOOGLE_CLIENT_ID }}|g" dist/index.html
+          sed -i 's|app.js|app.min.js|g' dist/index.html
+
+      - name: Bundle, Minify, and Obfuscate JavaScript
+        run: terser dist/app.js --compress --mangle --output dist/app.min.js
+
+      - name: Remove original JS file from dist
+        run: rm dist/app.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
