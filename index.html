@@ -90,6 +90,22 @@
         #page-list li.drop-indicator-bottom {
             box-shadow: inset 0 -2px 0 0 dodgerblue;
         }
+        #title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+            background-color: #f8f9fa;
+        }
+        #document-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #title-bar-actions button {
+            margin-left: 10px;
+        }
         .context-menu-button {
             background: none;
             border: none;
@@ -184,24 +200,16 @@
     </style>
 </head>
 <body>
-    <div class="main-container">
+    <div id="title-bar">
+        <span id="document-title">Untitled Document</span>
+        <div id="title-bar-actions">
+            <button id="load-button" disabled>Load</button>
+            <button id="save-button" disabled>Save</button>
+            <button id="login-button">Login</button>
+        </div>
+    </div>
+    <div class="main-container" style="height: calc(100% - 50px);">
         <div id="index-section">
-            <div id="auth-container" style="padding-bottom: 10px; text-align: center;">
-                <div id="g_id_onload"
-                     data-client_id="PLACEHOLDER_CLIENT_ID"
-                     data-callback="onSignIn">
-                </div>
-                <div class="g_id_signin" data-type="standard"></div>
-                <div id="user-profile" style="display: none; padding-top: 10px;">
-                    <img id="user-avatar" src="" alt="User Avatar" style="width: 40px; height: 40px; border-radius: 50%;">
-                    <p id="user-name"></p>
-                    <button id="sign-out-button">Sign Out</button>
-                </div>
-            </div>
-            <div id="cloud-actions" style="display: none; padding-bottom: 10px; text-align: center;">
-                <button id="fetch-button">Fetch from Cloud</button>
-                <button id="store-button">Store to Cloud</button>
-            </div>
             <div id="drop-zone">
                 <p>Drop TOP files here or click to select</p>
                 <input type="file" id="file-input" multiple style="display: none;">
@@ -223,9 +231,42 @@
         </div>
     </div>
 
-    <script src="app.min.js"></script>
-    <script async defer src="https://apis.google.com/js/api.js"></script>
-    <script async defer src="https://accounts.google.com/gsi/client"></script>
+    <script type="module">
+      // Import the functions you need from the SDKs you need
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+      import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+      import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+      // Your web app's Firebase configuration
+      const firebaseConfig = {
+        apiKey: "PLACEHOLDER_API_KEY",
+        authDomain: "smash-smashin.firebaseapp.com",
+        projectId: "smash-smashin",
+        storageBucket: "smash-smashin.firebasestorage.app",
+        messagingSenderId: "260759655047",
+        appId: "1:260759655047:web:7a8931935a2557dae0de22"
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+
+      // Expose Firebase modules to the global window object
+      window.firebase = {
+        auth,
+        db,
+        GoogleAuthProvider,
+        signInWithPopup,
+        onAuthStateChanged,
+        signOut,
+        doc,
+        setDoc,
+        getDoc,
+        collection,
+        getDocs
+      };
+    </script>
+    <script src="app.js"></script>
 </body>
 </html>

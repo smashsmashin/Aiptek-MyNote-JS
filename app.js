@@ -10,16 +10,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const minThumb = document.getElementById('min-thumb');
     const maxThumb = document.getElementById('max-thumb');
 
-    const authContainer = document.getElementById('auth-container');
-    const userProfile = document.getElementById('user-profile');
-    const userAvatar = document.getElementById('user-avatar');
-    const userName = document.getElementById('user-name');
-    const signOutButton = document.getElementById('sign-out-button');
-    const cloudActions = document.getElementById('cloud-actions');
-    const gIdSignin = document.querySelector('.g_id_signin');
-    const fetchButton = document.getElementById('fetch-button');
-    const storeButton = document.getElementById('store-button');
-
+    const titleBar = document.getElementById('title-bar');
+    const documentTitle = document.getElementById('document-title');
+    const loadButton = document.getElementById('load-button');
+    const saveButton = document.getElementById('save-button');
+    const loginButton = document.getElementById('login-button');
 
     const pages = [];
     let currentPageIndex = -1;
@@ -407,6 +402,86 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('click', (e) => {
         if (contextMenu && !contextMenu.contains(e.target) && !e.target.classList.contains('context-menu-button')) {
             closeContextMenu();
+        }
+    });
+
+    loadButton.addEventListener('click', async () => {
+        if (!currentUser) {
+            alert("You must be logged in to load documents.");
+            return;
+        }
+
+        const userDocsRef = collection(db, "users", currentUser.uid, "documents");
+        const querySnapshot = await getDocs(userDocsRef);
+
+        if (querySnapshot.empty) {
+            alert("No saved documents found.");
+            return;
+        }
+
+        const docList = querySnapshot.docs.map(d => d.id);
+        const docNameToLoad = prompt("Enter the name of the document to load:\n\n" + docList.join("\n"));
+
+        if (docNameToLoad && docList.includes(docNameToLoad)) {
+            try {
+                loadButton.disabled = true;
+                loadButton.textContent = 'Loading...';
+
+                const docRef = doc(db, "users", currentUser.uid, "documents", docNameToLoad);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const docData = docSnap.data();
+
+                    const loadedPages = docData.pages.map(pageContent => {
+                        const byteString = atob(pageContent.data);
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) {
+                            ia[i] = byteString.charCodeAt(i);
+                        }
+                        const pageData = parseTopFile(ab);
+                        return { name: pageContent.name, data: pageData };
+                    });
+
+                    const isSessionEmpty = pages.length === 0;
+
+                    if (isSessionEmpty) {
+                        pages.push(...loadedPages);
+                        documentTitle.textContent = docNameToLoad;
+                        renderPageList();
+                        switchPage(0);
+                    } else {
+                        const replace = confirm("Do you want to replace the current pages or append the new ones?");
+                        if (replace) {
+                            pages.length = 0;
+                            pages.push(...loadedPages);
+                            documentTitle.textContent = docNameToLoad;
+                            renderPageList();
+                            switchPage(0);
+                        } else {
+                            const startIndex = pages.length;
+                            pages.push(...loadedPages);
+                            const useNewName = confirm(`Document loaded. Keep current name "${documentTitle.textContent}" or use new name "${docNameToLoad}"?`);
+                            if (useNewName) {
+                                documentTitle.textContent = docNameToLoad;
+                            }
+                            renderPageList();
+                            switchPage(startIndex);
+                        }
+                    }
+                } else {
+                    alert("Document not found.");
+                }
+            } catch (error) {
+                console.error("Error loading document:", error);
+                alert("Failed to load document. Please check the console for details.");
+            } finally {
+                loadButton.disabled = false;
+                loadButton.textContent = 'Load';
+            }
+        } else if (docNameToLoad) {
+            alert(`Document "${docNameToLoad}" not found.`);
         }
     });
 
@@ -825,119 +900,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // --- Google Sign-In ---
-
-    window.onSignIn = function(googleUser) {
-        const credential = googleUser.credential;
-        const profile = JSON.parse(atob(credential.split('.')[1])); // Decode JWT
-
-        // Update UI
-        userAvatar.src = profile.picture;
-        userName.textContent = profile.name;
-
-        gIdSignin.style.display = 'none';
-        userProfile.style.display = 'block';
-        cloudActions.style.display = 'block';
-    }
-
-    function signOut() {
-        google.accounts.id.disableAutoSelect();
-        // Potentially revoke token here if needed, but for now, just update UI
-
-        gIdSignin.style.display = 'block';
-        userProfile.style.display = 'none';
-        cloudActions.style.display = 'none';
-    }
-
-    signOutButton.addEventListener('click', signOut);
-
-    // --- Google Drive Integration ---
-
-    // IMPORTANT: For production, these values should not be hardcoded in the client-side code.
-    // They should be stored securely on a backend server and fetched by the client when needed.
-    const API_KEY = 'PLACEHOLDER_API_KEY'; // This will be replaced by GitHub Actions
-    const CLIENT_ID = 'PLACEHOLDER_CLIENT_ID'; // This will be replaced by GitHub Actions
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-    let tokenClient;
-    let gapiInited = false;
-    let gisInited = false;
-
-    window.gapiLoaded = function() {
-        gapi.load('client:picker', initializeGapiClient);
-    }
-
-    async function initializeGapiClient() {
-        await gapi.client.init({
-            apiKey: API_KEY,
-            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-        });
-        gapiInited = true;
-    }
-
-    window.gisLoaded = function() {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: '', // defined later
-        });
-        gisInited = true;
-    }
-
-    fetchButton.addEventListener('click', () => handleAuthClick('fetch'));
-    storeButton.addEventListener('click', () => handleAuthClick('store'));
-
-    function handleAuthClick(action) {
-        if (gapi.client.getToken() === null) {
-            tokenClient.callback = (resp) => {
-                if (resp.error !== undefined) {
-                    throw (resp);
-                }
-                if (action === 'fetch') createPicker();
-                else if (action === 'store') uploadCurrentPage();
-            };
-
-            if (google.accounts.oauth2.hasGrantedAllScopes(gapi.client.getToken(), SCOPES)) {
-                 if (action === 'fetch') createPicker();
-                 else if (action === 'store') uploadCurrentPage();
-            } else {
-                tokenClient.requestAccessToken({prompt: 'consent'});
-            }
-        } else {
-            if (action === 'fetch') createPicker();
-            else if (action === 'store') uploadCurrentPage();
-        }
-    }
-
-    function createPicker() {
-        const view = new google.picker.View(google.picker.ViewId.DOCS);
-        view.setMimeTypes("application/octet-stream"); // Adjust if you have a more specific MIME type
-
-        const picker = new google.picker.PickerBuilder()
-            .setAppId(CLIENT_ID.split('.')[0])
-            .setOAuthToken(gapi.client.getToken().access_token)
-            .addView(view)
-            .setDeveloperKey(API_KEY)
-            .setCallback(pickerCallback)
-            .build();
-        picker.setVisible(true);
-    }
-
-    async function pickerCallback(data) {
-        if (data.action === google.picker.Action.PICKED) {
-            const fileId = data.docs[0].id;
-            const fileName = data.docs[0].name;
-
-            const res = await gapi.client.drive.files.get({
-                fileId: fileId,
-                alt: 'media'
-            });
-
-            const fileContent = new Blob([res.body], { type: 'application/octet-stream' });
-            const file = new File([fileContent], fileName);
-            handleFiles([file]);
-        }
-    }
-
     function convertToTop(pageData) {
         const header = new ArrayBuffer(TOP_HEADER_SIZE);
         const packets = [];
@@ -968,40 +930,127 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Blob([combined], { type: 'application/octet-stream' });
     }
 
+    const blobToBase64 = (blob) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                // The result includes the data URL prefix (e.g., "data:application/octet-stream;base64,"),
+                // which we need to strip off to get only the base64 string.
+                resolve(reader.result.split(',')[1]);
+            };
+            reader.onerror = reject;
+        });
+    };
 
-    async function uploadCurrentPage() {
-        if (currentPageIndex < 0 || pages.length === 0) {
-            alert("No page selected to store.");
+    // --- Firebase Authentication ---
+    const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } = window.firebase;
+    let currentUser = null;
+
+    onAuthStateChanged(auth, (user) => {
+        currentUser = user;
+        if (user) {
+            // User is signed in
+            loginButton.textContent = 'Logout';
+            loadButton.disabled = false;
+            saveButton.disabled = false;
+            documentTitle.textContent = user.displayName ? `${user.displayName}'s Document` : 'Untitled Document';
+        } else {
+            // User is signed out
+            loginButton.textContent = 'Login';
+            loadButton.disabled = true;
+            saveButton.disabled = true;
+            documentTitle.textContent = 'Untitled Document';
+        }
+    });
+
+    loginButton.addEventListener('click', async () => {
+        if (currentUser) {
+            await signOut(auth);
+        } else {
+            try {
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                alert("Login failed. Please check the console for details.");
+            }
+        }
+    });
+
+    // --- Firebase Firestore & Storage ---
+    const { doc, setDoc, getDoc, collection, getDocs } = window.firebase;
+    saveButton.addEventListener('click', async () => {
+        if (!currentUser) {
+            alert("You must be logged in to save a document.");
+            return;
+        }
+        if (pages.length === 0) {
+            alert("There are no pages to save.");
             return;
         }
 
-        const page = pages[currentPageIndex];
-        const topFileBlob = convertToTop(page.data);
-        const fileName = page.name;
+        const docName = prompt("Enter a name for your document:", documentTitle.textContent);
+        if (!docName) return;
 
-        const metadata = {
-            name: fileName,
-            mimeType: 'application/octet-stream',
+        try {
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+
+            const pageDataPromises = pages.map(async (page) => {
+                const topFileBlob = convertToTop(page.data);
+                const base64Data = await blobToBase64(topFileBlob);
+                return { name: page.name, data: base64Data };
+            });
+
+            const pageContents = await Promise.all(pageDataPromises);
+
+            const docData = {
+                pages: pageContents,
+                createdAt: new Date()
+            };
+
+            const userDocRef = doc(db, "users", currentUser.uid, "documents", docName);
+            await setDoc(userDocRef, docData);
+
+            documentTitle.textContent = docName;
+            alert(`Document "${docName}" saved successfully.`);
+
+        } catch (error) {
+            console.error("Error saving document:", error);
+            alert("Failed to save document. Please check the console for details.");
+        } finally {
+            saveButton.disabled = false;
+            saveButton.textContent = 'Save';
+        }
+    });
+
+    documentTitle.addEventListener('click', () => {
+        const oldTitle = documentTitle.textContent;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = oldTitle;
+        input.className = 'page-name-input'; // Reuse existing styles if applicable
+
+        const finishEditing = () => {
+            const newTitle = input.value.trim();
+            documentTitle.textContent = (newTitle && newTitle !== oldTitle) ? newTitle : oldTitle;
+            input.replaceWith(documentTitle);
         };
 
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', topFileBlob);
-
-        const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: new Headers({ 'Authorization': 'Bearer ' + gapi.client.getToken().access_token }),
-            body: form,
+        input.addEventListener('blur', finishEditing);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
+                input.value = oldTitle;
+                input.blur();
+            }
         });
 
-        if (res.ok) {
-            alert(`File "${fileName}" uploaded successfully.`);
-        } else {
-            alert(`Error uploading file: ${res.statusText}`);
-        }
-    }
-
-
+        documentTitle.replaceWith(input);
+        input.focus();
+        input.select();
+    });
     // Initial setup
     resizeCanvas();
     canvasContainer.style.cursor = 'grab';
