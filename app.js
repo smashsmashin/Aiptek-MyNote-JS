@@ -1,3 +1,20 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "PLACEHOLDER_API_KEY",
+    authDomain: "smash-smashin.firebaseapp.com",
+    projectId: "smash-smashin",
+    storageBucket: "smash-smashin.firebasestorage.app",
+    messagingSenderId: "260759655047",
+    appId: "1:260759655047:web:7a8931935a2557dae0de22"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
@@ -446,19 +463,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const isSessionEmpty = pages.length === 0;
 
-                    pages.push(...loadedPages);
-
                     if (isSessionEmpty) {
+                        pages.push(...loadedPages);
                         documentTitle.textContent = docNameToLoad;
+                        renderPageList();
+                        switchPage(0);
                     } else {
-                        const useNewName = confirm(`Document loaded. Keep current name "${documentTitle.textContent}" or use new name "${docNameToLoad}"?`);
-                        if (useNewName) {
+                        const replace = confirm("Do you want to replace the current pages or append the new ones?");
+                        if (replace) {
+                            pages.length = 0;
+                            pages.push(...loadedPages);
                             documentTitle.textContent = docNameToLoad;
+                            renderPageList();
+                            switchPage(0);
+                        } else {
+                            const startIndex = pages.length;
+                            pages.push(...loadedPages);
+                            const useNewName = confirm(`Document loaded. Keep current name "${documentTitle.textContent}" or use new name "${docNameToLoad}"?`);
+                            if (useNewName) {
+                                documentTitle.textContent = docNameToLoad;
+                            }
+                            renderPageList();
+                            switchPage(startIndex);
                         }
                     }
-
-                    renderPageList();
-                    switchPage(pages.length - loadedPages.length);
                 } else {
                     alert("Document not found.");
                 }
@@ -933,7 +961,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Firebase Authentication ---
-    const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } = window.firebase;
     let currentUser = null;
 
     onAuthStateChanged(auth, (user) => {
@@ -968,7 +995,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Firebase Firestore & Storage ---
-    const { doc, setDoc, getDoc, collection, getDocs } = window.firebase;
     saveButton.addEventListener('click', async () => {
         if (!currentUser) {
             alert("You must be logged in to save a document.");
