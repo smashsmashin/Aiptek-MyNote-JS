@@ -1,3 +1,22 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyBktbaPzGVWkyC0vsiHJZDHuA5l9_0xVs8",
+    authDomain: "smash-smashin.firebaseapp.com",
+    projectId: "smash-smashin",
+    storageBucket: "smash-smashin.firebasestorage.app",
+    messagingSenderId: "260759655047",
+    appId: "1:260759655047:web:7a8931935a2557dae0de22"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
@@ -419,37 +438,52 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // For simplicity, using prompt. A modal would be better for UX.
         const docList = querySnapshot.docs.map(d => d.id);
         const docNameToLoad = prompt("Enter the name of the document to load:\n\n" + docList.join("\n"));
 
         if (docNameToLoad && docList.includes(docNameToLoad)) {
-            const docRef = doc(db, "users", currentUser.uid, "documents", docNameToLoad);
-            const docSnap = await getDoc(docRef);
+            try {
+                loadButton.disabled = true;
+                loadButton.textContent = 'Loading...';
 
-            if (docSnap.exists()) {
-                const docData = docSnap.data();
-                const loadedPages = docData.pages.map(p => ({
-                    name: p.name,
-                    data: JSON.parse(p.data)
-                }));
+                const docRef = doc(db, "users", currentUser.uid, "documents", docNameToLoad);
+                const docSnap = await getDoc(docRef);
 
-                const wasDocumentPreviouslyLoaded = pages.length > 0;
-                pages.push(...loadedPages);
+                if (docSnap.exists()) {
+                    const docData = docSnap.data();
 
-                if (wasDocumentPreviouslyLoaded) {
-                    const useNewName = confirm(`Document loaded. Keep current name "${documentTitle.textContent}" or use new name "${docNameToLoad}"?`);
-                    if (useNewName) {
+                    const pageFetchPromises = docData.pages.map(async (pageMeta) => {
+                        const response = await fetch(pageMeta.url);
+                        const arrayBuffer = await response.arrayBuffer();
+                        const pageData = parseTopFile(arrayBuffer);
+                        return { name: pageMeta.name, data: pageData };
+                    });
+
+                    const loadedPages = await Promise.all(pageFetchPromises);
+
+                    const wasDocumentPreviouslyLoaded = pages.length > 0;
+                    pages.push(...loadedPages);
+
+                    if (wasDocumentPreviouslyLoaded) {
+                        const useNewName = confirm(`Document loaded. Keep current name "${documentTitle.textContent}" or use new name "${docNameToLoad}"?`);
+                        if (useNewName) {
+                            documentTitle.textContent = docNameToLoad;
+                        }
+                    } else {
                         documentTitle.textContent = docNameToLoad;
                     }
-                } else {
-                    documentTitle.textContent = docNameToLoad;
-                }
 
-                renderPageList();
-                switchPage(pages.length - loadedPages.length); // Switch to the first of the new pages
-            } else {
-                alert("Document not found.");
+                    renderPageList();
+                    switchPage(pages.length - loadedPages.length);
+                } else {
+                    alert("Document not found.");
+                }
+            } catch (error) {
+                console.error("Error loading document:", error);
+                alert("Failed to load document. Please check the console for details.");
+            } finally {
+                loadButton.disabled = false;
+                loadButton.textContent = 'Load';
             }
         } else if (docNameToLoad) {
             alert(`Document "${docNameToLoad}" not found.`);
@@ -871,9 +905,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // --- Firebase Authentication ---
-    const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } = window.firebase;
+    function convertToTop(pageData) {
+        const header = new ArrayBuffer(TOP_HEADER_SIZE);
+        const packets = [];
 
+        pageData.forEach(path => {
+            if (path.length > 0) {
+                path.forEach((point, index) => {
+                    const packet = new ArrayBuffer(TOP_PACKET_SIZE);
+                    const view = new DataView(packet);
+                    const penStatus = (index === path.length - 1) ? 0 : 1;
+                    view.setUint8(0, penStatus);
+                    view.setInt16(1, TOP_HEIGHT - point.y, true);
+                    view.setInt16(3, point.x, true);
+                    packets.push(packet);
+                });
+            }
+        });
+
+        const totalSize = TOP_HEADER_SIZE + packets.length * TOP_PACKET_SIZE;
+        const combined = new Uint8Array(totalSize);
+        combined.set(new Uint8Array(header), 0);
+        let offset = TOP_HEADER_SIZE;
+        packets.forEach(packet => {
+            combined.set(new Uint8Array(packet), offset);
+            offset += TOP_PACKET_SIZE;
+        });
+
+        return new Blob([combined], { type: 'application/octet-stream' });
+    }
+
+    // --- Firebase Authentication ---
     let currentUser = null;
 
     onAuthStateChanged(auth, (user) => {
@@ -907,9 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- Firebase Firestore ---
-    const { doc, setDoc, getDoc, collection, getDocs } = window.firebase;
-
+    // --- Firebase Firestore & Storage ---
     saveButton.addEventListener('click', async () => {
         if (!currentUser) {
             alert("You must be logged in to save a document.");
@@ -923,22 +983,38 @@ document.addEventListener('DOMContentLoaded', () => {
         const docName = prompt("Enter a name for your document:", documentTitle.textContent);
         if (!docName) return;
 
-        const docData = {
-            pages: pages.map(p => ({
-                name: p.name,
-                data: JSON.stringify(p.data) // Store path data as a JSON string
-            })),
-            createdAt: new Date()
-        };
-
         try {
+            // Show some feedback that saving is in progress
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+
+            const pageUploadPromises = pages.map(async (page) => {
+                const topFileBlob = convertToTop(page.data);
+                const storageRef = ref(storage, `users/${currentUser.uid}/documents/${docName}/${page.name}.top`);
+                await uploadBytes(storageRef, topFileBlob);
+                const downloadURL = await getDownloadURL(storageRef);
+                return { name: page.name, url: downloadURL };
+            });
+
+            const pageMetadatas = await Promise.all(pageUploadPromises);
+
+            const docData = {
+                pages: pageMetadatas,
+                createdAt: new Date()
+            };
+
             const userDocRef = doc(db, "users", currentUser.uid, "documents", docName);
             await setDoc(userDocRef, docData);
+
             documentTitle.textContent = docName;
             alert(`Document "${docName}" saved successfully.`);
+
         } catch (error) {
             console.error("Error saving document:", error);
             alert("Failed to save document. Please check the console for details.");
+        } finally {
+            saveButton.disabled = false;
+            saveButton.textContent = 'Save';
         }
     });
 
@@ -947,35 +1023,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.createElement('input');
         input.type = 'text';
         input.value = oldTitle;
-        input.style.fontSize = '1.2em';
-        input.style.fontWeight = 'bold';
-        input.style.border = 'none';
-        input.style.padding = '0';
-        input.style.width = `${documentTitle.getBoundingClientRect().width + 20}px`;
+        input.className = 'page-name-input'; // Reuse existing styles if applicable
 
         const finishEditing = () => {
             const newTitle = input.value.trim();
-            if (newTitle && newTitle !== oldTitle) {
-                documentTitle.textContent = newTitle;
-            } else {
-                documentTitle.textContent = oldTitle;
-            }
-            documentTitle.style.display = '';
+            documentTitle.textContent = (newTitle && newTitle !== oldTitle) ? newTitle : oldTitle;
             input.replaceWith(documentTitle);
         };
 
         input.addEventListener('blur', finishEditing);
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                input.blur();
-            } else if (e.key === 'Escape') {
+            if (e.key === 'Enter') input.blur();
+            if (e.key === 'Escape') {
                 input.value = oldTitle;
                 input.blur();
             }
         });
 
-        documentTitle.style.display = 'none';
-        titleBar.insertBefore(input, titleBar.firstChild);
+        documentTitle.replaceWith(input);
         input.focus();
         input.select();
     });
