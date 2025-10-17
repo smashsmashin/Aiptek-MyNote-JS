@@ -49,17 +49,27 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleFiles(files) {
         if (files.length === 0) return;
 
-        const newFiles = Array.from(files).filter(file => file);
-        let firstNewPageIndex = pages.length;
-
-        const readPromises = newFiles.map(file => {
-            return new Promise((resolve) => {
+        const readPromises = Array.from(files).map(file => {
+            return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const pageData = parseTopFile(e.target.result);
-                    pages.push({ name: file.name, data: pageData });
-                    resolve();
+                    const rawData = e.target.result;
+                    if (rawData.byteLength < TOP_HEADER_SIZE) {
+                        console.error(`File ${file.name} is smaller than the minimum header size.`);
+                        // Optionally, alert the user or skip the file.
+                        return resolve(null); // Resolve with null to filter out later
+                    }
+                    const header = rawData.slice(0, TOP_HEADER_SIZE);
+                    // Page data is now the raw ArrayBuffer, paths are parsed on demand.
+                    pages.push({
+                        name: file.name,
+                        rawData: rawData,
+                        header: header,
+                        paths: null // Paths will be parsed when the page is selected
+                    });
+                    resolve(true);
                 };
+                reader.onerror = (e) => reject(e);
                 reader.readAsArrayBuffer(file);
             });
         });
@@ -69,8 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentPageIndex === -1 && pages.length > 0) {
                 switchPage(0);
             } else {
-                // Re-select the current page to ensure the view is consistent
-                // especially if files were added while a page was active.
+                // If pages were added, we might need to re-render the current one
+                // but switchPage already handles this.
                 switchPage(currentPageIndex);
             }
         });
@@ -82,27 +92,41 @@ document.addEventListener('DOMContentLoaded', () => {
     const TOP_PACKET_SIZE = 6;
     const TOP_HEIGHT = 12000;
 
-    function parseTopFile(arrayBuffer) {
-        const view = new DataView(arrayBuffer);
+    function parsePageData(page) {
+        // If paths are already parsed, do nothing.
+        if (page.paths) return;
+
+        const view = new DataView(page.rawData);
         const paths = [];
-        let currentPath = [];
+        let currentPathPoints = [];
+        let pathStartOffset = -1;
 
         for (let offset = TOP_HEADER_SIZE; offset + TOP_PACKET_SIZE <= view.byteLength; offset += TOP_PACKET_SIZE) {
+            // Mark the start of a new path segment
+            if (pathStartOffset === -1) {
+                pathStartOffset = offset;
+            }
+
             const penStatus = view.getUint8(offset);
             const y = view.getInt16(offset + 1, true); // true for little-endian
             const x = view.getInt16(offset + 3, true); // true for little-endian
 
-            if (currentPath.length === 0) {
-                paths.push(currentPath);
-            }
+            currentPathPoints.push({ x, y: TOP_HEIGHT - y });
 
-            currentPath.push({ x, y: TOP_HEIGHT - y });
-
+            // If pen-up, the path segment is complete.
             if (penStatus === 0) {
-                currentPath = [];
+                const pathLength = offset - pathStartOffset + TOP_PACKET_SIZE;
+                paths.push({
+                    points: currentPathPoints,
+                    offset: pathStartOffset,
+                    length: pathLength,
+                });
+                // Reset for the next path
+                currentPathPoints = [];
+                pathStartOffset = -1;
             }
         }
-        return paths.filter(path => path.length > 0);
+        page.paths = paths;
     }
 
     // --- Page Switching ---
@@ -147,17 +171,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function switchPage(index) {
         if (index < 0 || index >= pages.length) {
-            // If the current page was deleted, switch to a valid one
+            // If the list is now empty
             if (pages.length === 0) {
                 currentPageIndex = -1;
-                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
-            } else {
-                currentPageIndex = Math.max(0, Math.min(index, pages.length - 1));
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                renderPageList();
+                updateThumbs();
+                return;
             }
-        } else {
-            currentPageIndex = index;
+            // If the index is invalid, select the nearest valid one
+            index = Math.max(0, Math.min(index, pages.length - 1));
         }
 
+        currentPageIndex = index;
+        const page = pages[currentPageIndex];
+
+        // This is the core of on-demand parsing.
+        // The function will only parse if page.paths is null.
+        parsePageData(page);
 
         selectionMin = 0;
         selectionMax = 0;
@@ -255,79 +286,113 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isMergePreview = mergePreview && mergePreview.index === currentPageIndex;
         const isSplitPreview = splitPreview && splitPreview.index === currentPageIndex;
-        const pageToRender = isMergePreview ? mergePreview : page;
+        // The page object itself is now the source of truth.
+        // Previews will temporarily replace page.paths for rendering.
+        const pathsToRender = page.paths || [];
 
-        // Handle merge or split preview rendering
-        if (isMergePreview || isSplitPreview) {
-            pageToRender.data.forEach((path, i) => {
-                if (path.length > 0) {
-                    if (isMergePreview) {
-                        ctx.strokeStyle = 'purple';
-                    } else { // isSplitPreview
-                        const splitPoint = splitPreview.splitPoint;
-                        ctx.strokeStyle = i < splitPoint ? 'blue' : 'red';
-                    }
-                    ctx.lineWidth = baseLineWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(path[0].x, path[0].y);
-                    for (let j = 1; j < path.length; j++) {
-                        ctx.lineTo(path[j].x, path[j].y);
-                    }
-                    ctx.stroke();
+        pathsToRender.forEach((path, i) => {
+            if (path.points.length > 0) {
+                let strokeStyle = 'black'; // Default
+                const isSelected = i >= selectionMin && i < selectionMax;
+
+                // Determine style based on state (previews take precedence)
+                if (isSplitPreview && splitPreview.index === currentPageIndex) {
+                    const splitPoint = splitPreview.splitPoint;
+                    strokeStyle = i < splitPoint ? 'blue' : 'red';
+                } else if (isMergePreview && mergePreview.index === currentPageIndex) {
+                    strokeStyle = 'purple';
+                } else if (isSelected) {
+                    strokeStyle = 'blue';
                 }
-            });
-        } else {
-            // Standard rendering
-            page.data.forEach((path, i) => {
-                if (path.length > 0) {
-                    const isSelected = i >= selectionMin && i < selectionMax;
-                    ctx.strokeStyle = isSelected ? 'blue' : 'black';
-                    ctx.lineWidth = isSelected ? baseLineWidth * 3 : baseLineWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(path[0].x, path[0].y);
-                    for (let j = 1; j < path.length; j++) {
-                        ctx.lineTo(path[j].x, path[j].y);
-                    }
-                    ctx.stroke();
+
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = isSelected ? baseLineWidth * 3 : baseLineWidth;
+                ctx.beginPath();
+                ctx.moveTo(path.points[0].x, path.points[0].y);
+                for (let j = 1; j < path.points.length; j++) {
+                    ctx.lineTo(path.points[j].x, path.points[j].y);
                 }
-            });
-        }
+                ctx.stroke();
+            }
+        });
 
         ctx.restore();
     }
 
     function splitPage(index) {
-        const splitPoint = selectionMin;
         const page = pages[index];
+        const splitPoint = selectionMin; // This is the index of the first path for page 'b'
 
-        // Set up preview and redraw
+        // Set up preview state and redraw. The preview is now just visual.
         splitPreview = { index, splitPoint };
         drawCurrentPage();
 
-        const message = `Split this page into two? Page "a" will have ${splitPoint} paths (blue), and page "b" will have ${page.data.length - splitPoint} paths (red).`;
+        const message = `Split this page into two? Page "a" will have ${splitPoint} paths (blue), and page "b" will have ${page.paths.length - splitPoint} paths (red).`;
 
-        // Use a timeout to allow the canvas to redraw *before* the confirm dialog blocks the main thread
         setTimeout(() => {
             const confirmed = window.confirm(message);
+            splitPreview = null; // Clear preview state regardless of choice
 
             if (confirmed) {
-                const originalName = page.name;
-                const dataA = page.data.slice(0, splitPoint);
-                const dataB = page.data.slice(splitPoint);
+                const originalName = page.name.replace(/.top$/i, '');
 
-                const pageA = { name: `${originalName}-a`, data: dataA };
-                const pageB = { name: `${originalName}-b`, data: dataB };
+                // Get the raw data segments for each new page
+                const pathsA = page.paths.slice(0, splitPoint);
+                const pathsB = page.paths.slice(splitPoint);
 
-                pages.splice(index, 1, pageA, pageB);
+                const createNewRawData = (paths) => {
+                    if (paths.length === 0) return null;
+                    const dataSegments = paths.map(p => page.rawData.slice(p.offset, p.offset + p.length));
+                    const totalDataLength = dataSegments.reduce((sum, s) => sum + s.byteLength, 0);
 
-                splitPreview = null;
-                switchPage(index);
+                    const newRawData = new ArrayBuffer(TOP_HEADER_SIZE + totalDataLength);
+                    const newView = new Uint8Array(newRawData);
+                    newView.set(new Uint8Array(page.header), 0); // Copy header
+
+                    let currentOffset = TOP_HEADER_SIZE;
+                    for (const segment of dataSegments) {
+                        newView.set(new Uint8Array(segment), currentOffset);
+                        currentOffset += segment.byteLength;
+                    }
+                    return newRawData;
+                };
+
+                const rawDataA = createNewRawData(pathsA);
+                const rawDataB = createNewRawData(pathsB);
+
+                const newPages = [];
+                if (rawDataA) {
+                    newPages.push({
+                        name: `${originalName}-a.top`,
+                        rawData: rawDataA,
+                        header: page.header, // Both get the same header
+                        paths: null // Re-parse on demand
+                    });
+                }
+                if (rawDataB) {
+                    newPages.push({
+                        name: `${originalName}-b.top`,
+                        rawData: rawDataB,
+                        header: page.header,
+                        paths: null // Re-parse on demand
+                    });
+                }
+
+                if (newPages.length > 0) {
+                    pages.splice(index, 1, ...newPages);
+                    switchPage(index); // Switch to the first new page
+                } else {
+                    // This case might happen if the split results in two empty pages,
+                    // effectively deleting the original.
+                    pages.splice(index, 1);
+                    switchPage(Math.max(0, index - 1));
+                }
+
             } else {
-                // If cancelled, reset preview and redraw
-                splitPreview = null;
+                // If cancelled, just redraw to remove the preview colors
                 drawCurrentPage();
             }
-        }, 10); // A small delay is enough
+        }, 10);
     }
 
 
@@ -362,7 +427,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const isFirstPage = pageIndex === 0;
         const isLastPage = pageIndex === pages.length - 1;
         const page = pages[pageIndex];
-        const totalPaths = page.data.length;
+        // Ensure paths are parsed before checking their length
+        parsePageData(page);
+        const totalPaths = page.paths ? page.paths.length : 0;
 
         // Condition for splitting: min thumb is between the start and end, and selection range is zero
         const canSplit = selectionMin > 0 && selectionMin < totalPaths && selectionMin === selectionMax;
@@ -435,13 +502,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const loadedPages = docData.pages.map(pageContent => {
                         const byteString = atob(pageContent.data);
-                        const ab = new ArrayBuffer(byteString.length);
-                        const ia = new Uint8Array(ab);
+                        const rawData = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(rawData);
                         for (let i = 0; i < byteString.length; i++) {
                             ia[i] = byteString.charCodeAt(i);
                         }
-                        const pageData = parseTopFile(ab);
-                        return { name: pageContent.name, data: pageData };
+                        const header = rawData.slice(0, TOP_HEADER_SIZE);
+                        return {
+                            name: pageContent.name,
+                            rawData: rawData,
+                            header: header,
+                            paths: null // Parse on demand
+                        };
                     });
 
                     const isSessionEmpty = pages.length === 0;
@@ -546,7 +618,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateThumbs() {
         if (currentPageIndex < 0) return;
         const page = pages[currentPageIndex];
-        const totalPaths = page.data.length;
+        const totalPaths = page.paths ? page.paths.length : 0;
         if (totalPaths === 0) {
             minThumb.style.top = '0%';
             maxThumb.style.top = '0%';
@@ -575,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function onThumbMouseMove(event) {
         if (!activeThumb || currentPageIndex < 0) return;
         const page = pages[currentPageIndex];
-        const totalPaths = page.data.length;
+        const totalPaths = page.paths ? page.paths.length : 0;
         if (totalPaths <= 1) return;
         const barRect = selectionBar.getBoundingClientRect();
         const offsetY = event.clientY - barRect.top;
@@ -605,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (step === 0 || currentPageIndex < 0) return;
         event.preventDefault();
         const page = pages[currentPageIndex];
-        const totalPaths = page.data.length;
+        const totalPaths = page.paths ? page.paths.length : 0;
         if (thumb === minThumb) {
             selectionMin = Math.max(0, Math.min(selectionMin + step, selectionMax));
         } else {
@@ -644,24 +716,63 @@ document.addEventListener('DOMContentLoaded', () => {
         const bottomPage = direction === 'up' ? pages[index] : pages[otherIndex];
         const topIndex = Math.min(index, otherIndex);
 
-        const newName = `${topPage.name}-${bottomPage.name}`;
-        const mergedData = topPage.data.concat(bottomPage.data);
+        // Ensure both pages have their paths parsed for preview and merging.
+        parsePageData(topPage);
+        parsePageData(bottomPage);
 
-        // Set up preview state and redraw
-        mergePreview = { index: topIndex, data: mergedData };
-        switchPage(topIndex); // Switch to the correct page and let drawCurrentPage handle the preview
+        // Create a temporary merged set of paths for preview.
+        const mergedPaths = (topPage.paths || []).concat(bottomPage.paths || []);
 
-        const message = `Are you sure you want to merge "${topPage.name}" and "${bottomPage.name}" into a new page named "${newName}"?`;
+        // Use a temporary object for the preview data
+        const tempPreviewPage = {
+            paths: mergedPaths
+        };
 
-        setTimeout(() => {
+        mergePreview = { index: topIndex, data: tempPreviewPage };
+        drawCurrentPage();
+
+        const message = `Are you sure you want to merge "${topPage.name}" and "${bottomPage.name}"?`;
+
+        setTimeout(async () => {
             const confirmed = window.confirm(message);
+            mergePreview = null; // Clear preview state
+
             if (confirmed) {
-                const mergedPage = { name: newName, data: mergedData };
+                let finalHeader = topPage.header;
+                // Compare headers by converting them to strings
+                const topHeaderStr = String.fromCharCode.apply(null, new Uint8Array(topPage.header));
+                const bottomHeaderStr = String.fromCharCode.apply(null, new Uint8Array(bottomPage.header));
+
+                if (topHeaderStr !== bottomHeaderStr) {
+                    let choice = prompt(`The headers of "${topPage.name}" and "${bottomPage.name}" are different. Which header do you want to use? Type 'top' or 'bottom'.`, 'top');
+                    while(choice && choice.toLowerCase() !== 'top' && choice.toLowerCase() !== 'bottom') {
+                        choice = prompt(`Invalid choice. Please type 'top' or 'bottom'.`, 'top');
+                    }
+                    if (choice && choice.toLowerCase() === 'bottom') {
+                        finalHeader = bottomPage.header;
+                    }
+                }
+
+                const topData = topPage.rawData.slice(TOP_HEADER_SIZE);
+                const bottomData = bottomPage.rawData.slice(TOP_HEADER_SIZE);
+
+                const newRawData = new ArrayBuffer(TOP_HEADER_SIZE + topData.byteLength + bottomData.byteLength);
+                const newView = new Uint8Array(newRawData);
+                newView.set(new Uint8Array(finalHeader), 0);
+                newView.set(new Uint8Array(topData), TOP_HEADER_SIZE);
+                newView.set(new Uint8Array(bottomData), TOP_HEADER_SIZE + topData.byteLength);
+
+                const newName = `${topPage.name.replace(/.top$/i, '')}-${bottomPage.name.replace(/.top$/i, '')}.top`;
+                const mergedPage = {
+                    name: newName,
+                    rawData: newRawData,
+                    header: finalHeader,
+                    paths: null // Will be re-parsed on next selection
+                };
+
                 pages.splice(topIndex, 2, mergedPage);
-                mergePreview = null; // Clear preview state
-                switchPage(topIndex); // Re-render the final merged page
+                switchPage(topIndex); // Switch to the new merged page
             } else {
-                mergePreview = null; // Clear preview state
                 drawCurrentPage(); // Redraw to restore the original view
             }
         }, 10);
@@ -767,31 +878,45 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleDeleteKey(event) {
         if (event.key !== 'Delete' || currentPageIndex < 0) return;
 
-        // If a selection exists, delete the selected paths
+        const page = pages[currentPageIndex];
+        if (!page) return;
+
         if (selectionMin < selectionMax) {
+            // A selection of paths is to be deleted
             const confirmed = window.confirm(`Are you sure you want to delete ${selectionMax - selectionMin} selected path(s)?`);
             if (confirmed) {
-                const page = pages[currentPageIndex];
-                const deleteCount = selectionMax - selectionMin;
-                page.data.splice(selectionMin, deleteCount);
+                const pathsToDelete = new Set(page.paths.slice(selectionMin, selectionMax));
+                const remainingPaths = page.paths.filter(p => !pathsToDelete.has(p));
 
-                selectionMax = selectionMin; // Reset selection
-
-                if (page.data.length === 0) {
-                    // If all paths are gone, try to delete the page, but if the user
-                    // cancels, we must still refresh the canvas to show it's empty.
-                    if (!deletePage(currentPageIndex)) {
-                        updateThumbs();
-                        drawCurrentPage();
-                    }
+                if (remainingPaths.length === 0) {
+                    // If all paths are deleted, just delete the page
+                    deletePage(currentPageIndex);
                 } else {
-                    updateThumbs();
-                    drawCurrentPage();
+                    // Rebuild the rawData from the remaining paths
+                    const remainingDataSize = remainingPaths.reduce((sum, p) => sum + p.length, 0);
+                    const newRawData = new ArrayBuffer(TOP_HEADER_SIZE + remainingDataSize);
+                    const newView = new Uint8Array(newRawData);
+
+                    newView.set(new Uint8Array(page.header), 0);
+                    let currentOffset = TOP_HEADER_SIZE;
+                    remainingPaths.forEach(path => {
+                        const segment = page.rawData.slice(path.offset, path.offset + path.length);
+                        newView.set(new Uint8Array(segment), currentOffset);
+                        currentOffset += segment.byteLength;
+                    });
+
+                    // Update page in-place
+                    page.rawData = newRawData;
+                    page.paths = null; // Force re-parsing
+
+                    selectionMax = selectionMin; // Reset selection
+
+                    // Re-parse and redraw
+                    switchPage(currentPageIndex);
                 }
             }
-        }
-        // If no selection exists, delete the entire page
-        else {
+        } else {
+            // No selection, so delete the entire page
             deletePage(currentPageIndex);
         }
     }
@@ -828,12 +953,14 @@ document.addEventListener('DOMContentLoaded', () => {
             printCtx.scale(contentScale, contentScale);
             printCtx.lineWidth = 5;
             printCtx.strokeStyle = 'black';
-            page.data.forEach(path => {
-                if (path.length > 0) {
+            // Ensure paths are parsed before printing
+            parsePageData(page);
+            (page.paths || []).forEach(path => {
+                if (path.points.length > 0) {
                     printCtx.beginPath();
-                    printCtx.moveTo(path[0].x, path[0].y);
-                    for (let j = 1; j < path.length; j++) {
-                        printCtx.lineTo(path[j].x, path[j].y);
+                    printCtx.moveTo(path.points[0].x, path.points[0].y);
+                    for (let j = 1; j < path.points.length; j++) {
+                        printCtx.lineTo(path.points[j].x, path.points[j].y);
                     }
                     printCtx.stroke();
                 }
@@ -899,36 +1026,6 @@ document.addEventListener('DOMContentLoaded', () => {
         input.select();
     }
 
-
-    function convertToTop(pageData) {
-        const header = new ArrayBuffer(TOP_HEADER_SIZE);
-        const packets = [];
-
-        pageData.forEach(path => {
-            if (path.length > 0) {
-                path.forEach((point, index) => {
-                    const packet = new ArrayBuffer(TOP_PACKET_SIZE);
-                    const view = new DataView(packet);
-                    const penStatus = (index === path.length - 1) ? 0 : 1;
-                    view.setUint8(0, penStatus);
-                    view.setInt16(1, TOP_HEIGHT - point.y, true);
-                    view.setInt16(3, point.x, true);
-                    packets.push(packet);
-                });
-            }
-        });
-
-        const totalSize = TOP_HEADER_SIZE + packets.length * TOP_PACKET_SIZE;
-        const combined = new Uint8Array(totalSize);
-        combined.set(new Uint8Array(header), 0);
-        let offset = TOP_HEADER_SIZE;
-        packets.forEach(packet => {
-            combined.set(new Uint8Array(packet), offset);
-            offset += TOP_PACKET_SIZE;
-        });
-
-        return new Blob([combined], { type: 'application/octet-stream' });
-    }
 
     const blobToBase64 = (blob) => {
         return new Promise((resolve, reject) => {
@@ -998,7 +1095,9 @@ document.addEventListener('DOMContentLoaded', () => {
             saveButton.textContent = 'Saving...';
 
             const pageDataPromises = pages.map(async (page) => {
-                const topFileBlob = convertToTop(page.data);
+                // The rawData is already a complete .top file in an ArrayBuffer.
+                // We just need to convert it to a Blob and then to Base64.
+                const topFileBlob = new Blob([page.rawData], { type: 'application/octet-stream' });
                 const base64Data = await blobToBase64(topFileBlob);
                 return { name: page.name, data: base64Data };
             });
