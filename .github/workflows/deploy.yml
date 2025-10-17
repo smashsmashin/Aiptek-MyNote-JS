@@ -8,6 +8,7 @@ on:
       - firebase-integration
       - feat/refactor-data-handling
       - feature/add-compression
+      - feat/update-title-bar-ui
 
 jobs:
   build-and-deploy:
