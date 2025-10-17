@@ -1165,7 +1165,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const fileBytes = new Uint8Array(fileBuffer);
         const pointDataView = new DataView(fileBuffer, headerSize);
-        const numPoints = (fileBuffer.byteLength - headerSize) / 6;
+        const numPoints = Math.floor((fileBuffer.byteLength - headerSize) / 6);
 
         const compressedChunks = [];
         let previousX = 0;
