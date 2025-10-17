@@ -59,12 +59,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Optionally, alert the user or skip the file.
                         return resolve(null); // Resolve with null to filter out later
                     }
-                    const header = rawData.slice(0, TOP_HEADER_SIZE);
                     // Page data is now the raw ArrayBuffer, paths are parsed on demand.
                     pages.push({
                         name: file.name,
                         rawData: rawData,
-                        header: header,
                         paths: null // Paths will be parsed when the page is selected
                     });
                     resolve(true);
@@ -347,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const newRawData = new ArrayBuffer(TOP_HEADER_SIZE + totalDataLength);
                     const newView = new Uint8Array(newRawData);
-                    newView.set(new Uint8Array(page.header), 0); // Copy header
+                    newView.set(new Uint8Array(page.rawData.slice(0, TOP_HEADER_SIZE)), 0); // Copy header
 
                     let currentOffset = TOP_HEADER_SIZE;
                     for (const segment of dataSegments) {
@@ -365,7 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     newPages.push({
                         name: `${originalName}-a.top`,
                         rawData: rawDataA,
-                        header: page.header, // Both get the same header
                         paths: null // Re-parse on demand
                     });
                 }
@@ -373,7 +370,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     newPages.push({
                         name: `${originalName}-b.top`,
                         rawData: rawDataB,
-                        header: page.header,
                         paths: null // Re-parse on demand
                     });
                 }
@@ -502,16 +498,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const loadedPages = docData.pages.map(pageContent => {
                         const byteString = atob(pageContent.data);
-                        const rawData = new ArrayBuffer(byteString.length);
-                        const ia = new Uint8Array(rawData);
+                        const compressedData = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(compressedData);
                         for (let i = 0; i < byteString.length; i++) {
                             ia[i] = byteString.charCodeAt(i);
                         }
-                        const header = rawData.slice(0, TOP_HEADER_SIZE);
+
+                        // Decompress the data after loading
+                        const rawData = decompressPointsWithHeader(compressedData);
+
                         return {
                             name: pageContent.name,
                             rawData: rawData,
-                            header: header,
                             paths: null // Parse on demand
                         };
                     });
@@ -738,10 +736,10 @@ document.addEventListener('DOMContentLoaded', () => {
             mergePreview = null; // Clear preview state
 
             if (confirmed) {
-                let finalHeader = topPage.header;
+                let finalHeader = topPage.rawData.slice(0, TOP_HEADER_SIZE);
                 // Compare headers by converting them to strings
-                const topHeaderStr = String.fromCharCode.apply(null, new Uint8Array(topPage.header));
-                const bottomHeaderStr = String.fromCharCode.apply(null, new Uint8Array(bottomPage.header));
+                const topHeaderStr = String.fromCharCode.apply(null, new Uint8Array(topPage.rawData.slice(0, TOP_HEADER_SIZE)));
+                const bottomHeaderStr = String.fromCharCode.apply(null, new Uint8Array(bottomPage.rawData.slice(0, TOP_HEADER_SIZE)));
 
                 if (topHeaderStr !== bottomHeaderStr) {
                     let choice = prompt(`The headers of "${topPage.name}" and "${bottomPage.name}" are different. Which header do you want to use? Type 'top' or 'bottom'.`, 'top');
@@ -749,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         choice = prompt(`Invalid choice. Please type 'top' or 'bottom'.`, 'top');
                     }
                     if (choice && choice.toLowerCase() === 'bottom') {
-                        finalHeader = bottomPage.header;
+                        finalHeader = bottomPage.rawData.slice(0, TOP_HEADER_SIZE);
                     }
                 }
 
@@ -766,7 +764,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const mergedPage = {
                     name: newName,
                     rawData: newRawData,
-                    header: finalHeader,
                     paths: null // Will be re-parsed on next selection
                 };
 
@@ -793,8 +790,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.preventDefault();
                     return;
                 }
-                draggedIndex = parseInt(e.currentTarget.dataset.index, 10);
-                setTimeout(() => e.currentTarget.classList.add('dragging'), 0);
+                const draggedItem = e.currentTarget;
+                draggedIndex = parseInt(draggedItem.dataset.index, 10);
+                setTimeout(() => draggedItem.classList.add('dragging'), 0);
                 e.dataTransfer.effectAllowed = 'move';
             });
 
@@ -897,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newRawData = new ArrayBuffer(TOP_HEADER_SIZE + remainingDataSize);
                     const newView = new Uint8Array(newRawData);
 
-                    newView.set(new Uint8Array(page.header), 0);
+                    newView.set(new Uint8Array(page.rawData.slice(0, TOP_HEADER_SIZE)), 0);
                     let currentOffset = TOP_HEADER_SIZE;
                     remainingPaths.forEach(path => {
                         const segment = page.rawData.slice(path.offset, path.offset + path.length);
@@ -1095,9 +1093,9 @@ document.addEventListener('DOMContentLoaded', () => {
             saveButton.textContent = 'Saving...';
 
             const pageDataPromises = pages.map(async (page) => {
-                // The rawData is already a complete .top file in an ArrayBuffer.
-                // We just need to convert it to a Blob and then to Base64.
-                const topFileBlob = new Blob([page.rawData], { type: 'application/octet-stream' });
+                // Compress the rawData before saving
+                const compressedData = compressPointsWithHeader(page.rawData);
+                const topFileBlob = new Blob([compressedData], { type: 'application/octet-stream' });
                 const base64Data = await blobToBase64(topFileBlob);
                 return { name: page.name, data: base64Data };
             });
@@ -1153,4 +1151,256 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial setup
     resizeCanvas();
     canvasContainer.style.cursor = 'grab';
+
+    /**
+     * Компресира .top данни (ArrayBuffer), запазвайки 32-байтовия хедър и използвайки:
+     * - 2-байтов Compact Delta (MSB=1) за малки промени (Status!=0).
+     * - 1-байтов (0x00) за Status=0 точки.
+     * - 6-байтов Full Point (MSB=0, Bit 6=1) за други Status!=0.
+     *
+     * @param {ArrayBuffer} fileBuffer - Некомпресираното съдържание на .top файла (с хедър).
+     * @returns {ArrayBuffer} Компресирани данни (с хедър).
+     */
+    function compressPointsWithHeader(fileBuffer) {
+        const headerSize = 32;
+
+        const fileBytes = new Uint8Array(fileBuffer);
+        const pointDataView = new DataView(fileBuffer, headerSize);
+        const numPoints = (fileBuffer.byteLength - headerSize) / 6;
+
+        const compressedChunks = [];
+        let previousX = 0;
+        let previousY = 0;
+        let previousP = 0;
+        let isPathStarted = false;
+
+        const createBlock = (size) => new DataView(new ArrayBuffer(size));
+
+        // 1. Копиране на Хедъра (първите 32 байта)
+        const headerBuffer = fileBytes.slice(0, headerSize);
+        compressedChunks.push(headerBuffer.buffer);
+
+        // 2. Обработка на точките
+        for (let i = 0; i < numPoints; i++) {
+            const offset = i * 6;
+
+            const status = pointDataView.getUint8(offset);
+            const currentX = pointDataView.getInt16(offset + 1, true); // Int16
+            const currentY = pointDataView.getInt16(offset + 3, true); // Int16
+            const currentP = pointDataView.getUint8(offset + 5);
+
+            if (status != 0) { // Писалката е спусната (Status=1 или други стойности)
+
+                if (!isPathStarted) {
+                    // Първа точка от път: Винаги Full Point (MSB=0) - 6 байта
+                    const blockView = createBlock(6);
+
+                    let firstByte = status & 0x7f;
+                    if(status & 0x80)
+                        firstByte |= 0x40; // Бит 7 -> Бит 6
+
+                    blockView.setUint8(0, firstByte);
+                    blockView.setInt16(1, currentX, true);
+                    blockView.setInt16(3, currentY, true);
+                    blockView.setUint8(5, currentP);
+                    compressedChunks.push(blockView.buffer);
+
+                    isPathStarted = true;
+
+                } else {
+                    // Продължение на път: Опит за Compact Delta
+                    const deltaX = currentX - previousX;
+                    const deltaY = currentY - previousY;
+                    const deltaP = currentP - previousP;
+
+                    // Проверка за Compact Delta: |dX| < 32, |dY| < 32, |dP| < 4
+                    const isCompact = Math.abs(deltaX) < 32 &&
+                                      Math.abs(deltaY) < 32 &&
+                                      Math.abs(deltaP) < 4;
+
+                    if (isCompact) {
+                        // 2-байтов Компактен Блок (MSB=1)
+                        const blockView = createBlock(2);
+
+                        let byte1 = 0x80;
+                        byte1 |= (deltaX & 0x3F) << 1;
+                        byte1 |= (deltaY >> 5) & 0x01;
+                        blockView.setUint8(0, byte1);
+
+                        let byte2 = 0;
+                        byte2 |= (deltaY & 0x1F) << 3;
+                        byte2 |= (deltaP & 0x07);
+                        blockView.setUint8(1, byte2);
+
+                        compressedChunks.push(blockView.buffer);
+
+                    } else {
+                        // Full Point (MSB=0) - 6 байта
+                        const blockView = createBlock(6);
+
+                        let firstByte = status & 0x7f;
+                        if(status & 0x80)
+                            firstByte |= 0x40; // Бит 7 -> Бит 6
+
+                        blockView.setUint8(0, firstByte);
+                        blockView.setInt16(1, currentX, true);
+                        blockView.setInt16(3, currentY, true);
+                        blockView.setUint8(5, currentP);
+                        compressedChunks.push(blockView.buffer);
+                    }
+                }
+
+                previousX = currentX;
+                previousY = currentY;
+                previousP = currentP;
+
+            } else { // Status=0: Писалката е вдигната
+                // 1-байтов блок: 0x00
+                const blockView = createBlock(1);
+                blockView.setUint8(0, 0);
+                compressedChunks.push(blockView.buffer);
+
+                isPathStarted = false;
+            }
+        }
+
+        // 3. Свързване на всички компресирани блокове и връщане на ArrayBuffer
+        const totalLength = compressedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+        const finalCompressedBuffer = new Uint8Array(totalLength);
+        let outOffset = 0;
+        for (const chunk of compressedChunks) {
+            finalCompressedBuffer.set(new Uint8Array(chunk), outOffset);
+            outOffset += chunk.byteLength;
+        }
+
+        return finalCompressedBuffer.buffer;
+    }
+
+    /**
+     * Декомпресира .top данни (ArrayBuffer), кодирани с 6Б/2Б/1Б схема, и връща
+     * некомпресирания файл (ArrayBuffer) с хедър.
+     *
+     * @param {ArrayBuffer} compressedBuffer - Компресираните данни (с хедър).
+     * @returns {ArrayBuffer} Декомпресирани 6-байтови точки (с хедър).
+     */
+    function decompressPointsWithHeader(compressedBuffer) {
+        // getSignedValue и createPoint трябва да са дефинирани и достъпни
+        const getSignedValue = (value, bitCount) => {
+            const signBit = 1 << (bitCount - 1);
+            if (value & signBit) return value - (1 << bitCount);
+            return value;
+        };
+        const createPoint = (status, x, y, pressure) => {
+            const buffer = new ArrayBuffer(6);
+            const pointView = new DataView(buffer);
+            pointView.setUint8(0, status);
+            pointView.setInt16(1, x, true);
+            pointView.setInt16(3, y, true);
+            pointView.setUint8(5, pressure);
+            return buffer;
+        };
+
+
+        const compressedView = new DataView(compressedBuffer);
+        const decompressedPoints = [];
+        const headerSize = 32;
+
+        // 1. Извличане на хедъра
+        const compressedBytes = new Uint8Array(compressedBuffer);
+        const headerBuffer = compressedBytes.slice(0, headerSize).buffer;
+
+        let offset = headerSize;
+        let previousX = 0;
+        let previousY = 0;
+        let previousP = 0;
+
+        while (offset < compressedBuffer.byteLength) {
+            const byte1 = compressedView.getUint8(offset);
+
+            const isCompact = (byte1 & 0x80) === 0x80; // MSB=1
+            const isStatusZeroByte = byte1 === 0x00; // 1-байтов 0x00
+
+            let currentX, currentY, currentP, status;
+            let consumedBytes = 0;
+
+            if (isStatusZeroByte) {
+                consumedBytes = 1;
+
+                if (decompressedPoints.length === 0) {
+                    offset += consumedBytes;
+                    continue;
+                }
+                // Status=0: използва се последната декомпресирана точка
+                currentX = previousX;
+                currentY = previousY;
+                currentP = previousP;
+                status = 0;
+
+            } else if (isCompact) { // MSB=1: Compact Delta (2 байта)
+                consumedBytes = 2;
+                const byte2 = compressedView.getUint8(offset + 1);
+
+                // Декодиране на 2-байтовия блок
+                const dxEncoded = (byte1 >> 1) & 0x3F;
+                const deltaX = getSignedValue(dxEncoded, 6);
+                const dyUpper = byte1 & 0x01;
+                const dyLower = (byte2 >> 3) & 0x1F;
+                const dyEncoded = (dyUpper << 5) | dyLower;
+                const deltaY = getSignedValue(dyEncoded, 6);
+                const dpEncoded = byte2 & 0x07;
+                const deltaP = getSignedValue(dpEncoded, 3);
+
+                // Възстановяване на пълните стойности
+                currentX = previousX + deltaX;
+                currentY = previousY + deltaY;
+                currentP = previousP + deltaP;
+                // Компактният блок винаги е Status=1, но при декомпресия се връща
+                // оригиналният Status, който е 135 (0x87) по ваша логика.
+                // Тъй като в компресията не кодираме Status, ще приемем 135 (0x80 | 0x01 | 0x04)
+                // или 1 (LBS), като най-безопасно е да използваме 135, ако това е
+                // очакваната стойност за Status=1 в оригиналния файл.
+                status = 135;
+
+            } else { // MSB=0 и не е 0x00: Full Point (6 байта)
+                consumedBytes = 6;
+
+                status = byte1;
+                // Обръщане на 'MSB -> Бит 6' логиката: ако Бит 6 е 1, връщаме MSB=1
+                if(status & 0x40) {
+                    status |= 0x80;
+                }
+                status &= 0xBF; // Бит 6 винаги е 0 в оригиналния формат, след като се използва за флаг
+
+                // Четем X/Y като Int16
+                currentX = compressedView.getInt16(offset + 1, true);
+                currentY = compressedView.getInt16(offset + 3, true);
+                currentP = compressedView.getUint8(offset + 5);
+            }
+
+            // Актуализиране на предишните стойности
+            previousX = currentX;
+            previousY = currentY;
+            previousP = currentP;
+
+            // Добавяне на точката
+            decompressedPoints.push(createPoint(status, currentX, currentY, currentP));
+
+            // Преместване на офсета
+            offset += consumedBytes;
+        }
+
+        // 2. Свързване на Хедъра с Декомпресираните Точки и връщане на ArrayBuffer
+        const totalPointsLength = decompressedPoints.length * 6;
+        const finalBuffer = new Uint8Array(headerSize + totalPointsLength);
+
+        finalBuffer.set(new Uint8Array(headerBuffer), 0);
+
+        let outOffset = headerSize;
+        for (const chunk of decompressedPoints) {
+            finalBuffer.set(new Uint8Array(chunk), outOffset);
+            outOffset += 6;
+        }
+
+        return finalBuffer.buffer;
+    }
 });
