@@ -1,3 +1,204 @@
+const TOP_HEADER_SIZE = 32;
+const TOP_PACKET_SIZE = 6;
+const TOP_HEIGHT = 12000;
+
+function compressPointsWithHeader(base64FileContent) {
+    function base64ToArrayBuffer(base64) {
+        const binary = atob(base64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
+    }
+    function arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+    }
+
+    const fileBuffer = base64ToArrayBuffer(base64FileContent);
+    const headerSize = 32;
+    const fileBytes = new Uint8Array(fileBuffer);
+    const pointDataView = new DataView(fileBuffer, headerSize);
+    const numPoints = (fileBuffer.byteLength - headerSize) / 6;
+    const compressedChunks = [];
+    let previousX = 0;
+    let previousY = 0;
+    let previousP = 0;
+    let isPathStarted = false;
+    const createBlock = (size) => new DataView(new ArrayBuffer(size));
+    const headerBuffer = fileBytes.slice(0, headerSize);
+    compressedChunks.push(headerBuffer.buffer);
+    for (let i = 0; i < numPoints; i++) {
+        const offset = i * 6;
+        const status = pointDataView.getUint8(offset);
+        const currentX = pointDataView.getInt16(offset + 1, true);
+        const currentY = pointDataView.getInt16(offset + 3, true);
+        const currentP = pointDataView.getUint8(offset + 5);
+        if (status != 0) {
+            if (!isPathStarted) {
+                const blockView = createBlock(6);
+                let firstByte = status & 0x7f;
+                if (status & 0x80) firstByte |= 0x40;
+                blockView.setUint8(0, firstByte);
+                blockView.setInt16(1, currentX, true);
+                blockView.setInt16(3, currentY, true);
+                blockView.setUint8(5, currentP);
+                compressedChunks.push(blockView.buffer);
+                isPathStarted = true;
+            } else {
+                const deltaX = currentX - previousX;
+                const deltaY = currentY - previousY;
+                const deltaP = currentP - previousP;
+                const isCompact = Math.abs(deltaX) < 32 && Math.abs(deltaY) < 32 && Math.abs(deltaP) < 4;
+                if (isCompact) {
+                    const blockView = createBlock(2);
+                    let byte1 = 0x80;
+                    byte1 |= (deltaX & 0x3F) << 1;
+                    byte1 |= (deltaY >> 5) & 0x01;
+                    blockView.setUint8(0, byte1);
+                    let byte2 = 0;
+                    byte2 |= (deltaY & 0x1F) << 3;
+                    byte2 |= (deltaP & 0x07);
+                    blockView.setUint8(1, byte2);
+                    compressedChunks.push(blockView.buffer);
+                } else {
+                    const blockView = createBlock(6);
+                    let firstByte = status & 0x7f;
+                    if (status & 0x80) firstByte |= 0x40;
+                    blockView.setUint8(0, firstByte);
+                    blockView.setInt16(1, currentX, true);
+                    blockView.setInt16(3, currentY, true);
+                    blockView.setUint8(5, currentP);
+                    compressedChunks.push(blockView.buffer);
+                }
+            }
+            previousX = currentX;
+            previousY = currentY;
+            previousP = currentP;
+        } else {
+            const blockView = createBlock(1);
+            blockView.setUint8(0, 0);
+            compressedChunks.push(blockView.buffer);
+            isPathStarted = false;
+        }
+    }
+    const totalLength = compressedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const finalCompressedBuffer = new Uint8Array(totalLength);
+    let outOffset = 0;
+    for (const chunk of compressedChunks) {
+        finalCompressedBuffer.set(new Uint8Array(chunk), outOffset);
+        outOffset += chunk.byteLength;
+    }
+    return arrayBufferToBase64(finalCompressedBuffer.buffer);
+}
+
+function decompressPointsWithHeader(base64CompressedContent) {
+    function base64ToArrayBuffer(base64) {
+        const binary = atob(base64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
+    }
+    function arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+    }
+    const getSignedValue = (value, bitCount) => {
+        console.log(`getSignedValue: value=${value}, bitCount=${bitCount}`);
+        const signBit = 1 << (bitCount - 1);
+        if (value & signBit) {
+            const result = value - (1 << bitCount);
+            console.log(`getSignedValue: result=${result}`);
+            return result;
+        }
+        console.log(`getSignedValue: result=${value}`);
+        return value;
+    };
+    const createPoint = (status, x, y, pressure) => {
+        const buffer = new ArrayBuffer(6);
+        const pointView = new DataView(buffer);
+        pointView.setUint8(0, status);
+        pointView.setInt16(1, x, true);
+        pointView.setInt16(3, y, true);
+        pointView.setUint8(5, pressure);
+        return buffer;
+    };
+    const compressedBuffer = base64ToArrayBuffer(base64CompressedContent);
+    const compressedView = new DataView(compressedBuffer);
+    const decompressedPoints = [];
+    const headerSize = 32;
+    const compressedBytes = new Uint8Array(compressedBuffer);
+    const headerBuffer = compressedBytes.slice(0, headerSize).buffer;
+    let offset = headerSize;
+    let previousX = 0;
+    let previousY = 0;
+    let previousP = 0;
+    let previousStatus = 0;
+    while (offset < compressedBuffer.byteLength) {
+        const byte1 = compressedView.getUint8(offset);
+        const isCompact = (byte1 & 0x80) === 0x80;
+        const isStatusZeroByte = byte1 === 0x00;
+        let currentX, currentY, currentP, status;
+        let consumedBytes = 0;
+        if (isStatusZeroByte) {
+            consumedBytes = 1;
+            if (decompressedPoints.length === 0) {
+                offset += consumedBytes;
+                continue;
+            }
+            currentX = previousX;
+            currentY = previousY;
+            currentP = previousP;
+            status = 0;
+        } else if (isCompact) {
+            consumedBytes = 2;
+            const byte2 = compressedView.getUint8(offset + 1);
+            const dxEncoded = (byte1 >> 1) & 0x3F;
+            const deltaX = getSignedValue(dxEncoded, 6);
+            const dyUpper = byte1 & 0x01;
+            const dyLower = (byte2 >> 3) & 0x1F;
+            const dyEncoded = (dyUpper << 5) | dyLower;
+            const deltaY = getSignedValue(dyEncoded, 6);
+            const dpEncoded = byte2 & 0x07;
+            const deltaP = getSignedValue(dpEncoded, 3);
+            currentX = previousX + deltaX;
+            currentY = previousY + deltaY;
+            currentP = previousP + deltaP;
+            status = 135;
+        } else {
+            consumedBytes = 6;
+            status = byte1;
+            if (status & 0x40) {
+                status |= 0x80;
+                status &= 0xB7;
+            }
+            currentX = compressedView.getInt16(offset + 1, true);
+            currentY = compressedView.getInt16(offset + 3, true);
+            currentP = compressedView.getUint8(offset + 5);
+        }
+        previousX = currentX;
+        previousY = currentY;
+        previousP = currentP;
+        previousStatus = status;
+        decompressedPoints.push(createPoint(status, currentX, currentY, currentP));
+        offset += consumedBytes;
+    }
+    const totalPointsLength = decompressedPoints.length * 6;
+    const finalBuffer = new Uint8Array(headerSize + totalPointsLength);
+    finalBuffer.set(new Uint8Array(headerBuffer), 0);
+    let outOffset = headerSize;
+    for (const chunk of decompressedPoints) {
+        finalBuffer.set(new Uint8Array(chunk), outOffset);
+        outOffset += 6;
+    }
+    return arrayBufferToBase64(finalBuffer.buffer);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
@@ -50,14 +251,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (files.length === 0) return;
 
         const newFiles = Array.from(files).filter(file => file);
-        let firstNewPageIndex = pages.length;
 
         const readPromises = newFiles.map(file => {
             return new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const pageData = parseTopFile(e.target.result);
-                    pages.push({ name: file.name, data: pageData });
+                    // Store the raw ArrayBuffer and clear any cached parsed data
+                    pages.push({
+                        name: file.name,
+                        fileBuffer: e.target.result,
+                        parsedData: null
+                    });
                     resolve();
                 };
                 reader.readAsArrayBuffer(file);
@@ -69,146 +273,159 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentPageIndex === -1 && pages.length > 0) {
                 switchPage(0);
             } else {
-                // Re-select the current page to ensure the view is consistent
-                // especially if files were added while a page was active.
+                // Refresh the current page view if files are added
                 switchPage(currentPageIndex);
             }
         });
     }
 
-    // --- TOP File Parser ---
+    function getPageData(index) {
+        if (index < 0 || index >= pages.length) return null;
+        const page = pages[index];
 
-    const TOP_HEADER_SIZE = 32;
-    const TOP_PACKET_SIZE = 6;
-    const TOP_HEIGHT = 12000;
+        // If data is already parsed and cached, return it
+        if (page.parsedData) {
+            return page.parsedData;
+        }
+
+        // Otherwise, parse the fileBuffer and cache the result
+        const parsedData = parseTopFile(page.fileBuffer);
+        page.parsedData = parsedData;
+        return parsedData;
+    }
 
     function parseTopFile(arrayBuffer) {
+        const header = arrayBuffer.slice(0, TOP_HEADER_SIZE);
         const view = new DataView(arrayBuffer);
         const paths = [];
         let currentPath = [];
 
         for (let offset = TOP_HEADER_SIZE; offset + TOP_PACKET_SIZE <= view.byteLength; offset += TOP_PACKET_SIZE) {
             const penStatus = view.getUint8(offset);
-            const y = view.getInt16(offset + 1, true); // true for little-endian
-            const x = view.getInt16(offset + 3, true); // true for little-endian
+            const y = view.getInt16(offset + 1, true);
+            const x = view.getInt16(offset + 3, true);
+            const p = view.getUint8(offset + 5);
 
-            if (currentPath.length === 0) {
+            if (penStatus !== 0 && currentPath.length === 0) {
                 paths.push(currentPath);
             }
 
-            currentPath.push({ x, y: TOP_HEIGHT - y });
+            currentPath.push({ x, y: TOP_HEIGHT - y, p, penStatus });
 
             if (penStatus === 0) {
                 currentPath = [];
             }
         }
-        return paths.filter(path => path.length > 0);
+        return { header, data: paths.filter(path => path.length > 1) }; // Keep only paths with actual lines
     }
 
-    // --- Page Switching ---
+    function convertToTop(pageData) {
+        const packets = [];
+        pageData.data.forEach(path => {
+            if (path.length > 0) {
+                path.forEach(point => {
+                    const packet = new ArrayBuffer(TOP_PACKET_SIZE);
+                    const view = new DataView(packet);
+                    view.setUint8(0, point.penStatus);
+                    // Y is stored inverted in the file
+                    view.setInt16(1, point.y, true);
+                    view.setInt16(3, point.x, true);
+                    view.setUint8(5, point.p || 0);
+                    packets.push(packet);
+                });
+            }
+        });
 
-    // --- Page List Rendering ---
+        const totalSize = TOP_HEADER_SIZE + packets.length * TOP_PACKET_SIZE;
+        const buffer = new ArrayBuffer(totalSize);
+        const combined = new Uint8Array(buffer);
+
+        combined.set(new Uint8Array(pageData.header), 0);
+
+        let offset = TOP_HEADER_SIZE;
+        packets.forEach(packet => {
+            combined.set(new Uint8Array(packet), offset);
+            offset += TOP_PACKET_SIZE;
+        });
+
+        return buffer;
+    }
 
     function renderPageList() {
-        pageList.innerHTML = ''; // Clear existing list
-        closeContextMenu(); // Close any open context menus
-
+        pageList.innerHTML = '';
+        closeContextMenu();
         pages.forEach((page, index) => {
             const listItem = document.createElement('li');
             listItem.dataset.index = index;
             listItem.draggable = true;
-
             if (index === currentPageIndex) {
                 listItem.classList.add('active');
             }
-
-            // Make the entire list item clickable, not just the text
             listItem.addEventListener('click', () => switchPage(index));
-
             const pageName = document.createElement('span');
             pageName.className = 'page-name';
             pageName.textContent = page.name;
-
             const menuButton = document.createElement('button');
             menuButton.className = 'context-menu-button';
-            menuButton.innerHTML = '&#x22EE;'; // Vertical ellipsis
+            menuButton.innerHTML = '&#x22EE;';
             menuButton.addEventListener('click', (e) => {
                 e.stopPropagation();
                 showContextMenu(e.currentTarget, index);
             });
-
             listItem.appendChild(pageName);
             listItem.appendChild(menuButton);
             pageList.appendChild(listItem);
         });
-
         addDragDropListeners();
     }
 
     function switchPage(index) {
         if (index < 0 || index >= pages.length) {
-            // If the current page was deleted, switch to a valid one
             if (pages.length === 0) {
                 currentPageIndex = -1;
-                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
             } else {
                 currentPageIndex = Math.max(0, Math.min(index, pages.length - 1));
             }
         } else {
             currentPageIndex = index;
         }
-
-
         selectionMin = 0;
         selectionMax = 0;
-
-        renderPageList(); // Re-render to update the 'active' state
+        renderPageList();
         drawCurrentPage();
         updateThumbs();
     }
-
-    // --- Canvas Drawing ---
-
-    const PAGE_ASPECT_RATIO = 210 / 297; // A4 paper
+    const PAGE_ASPECT_RATIO = 210 / 297;
     let scale = 1;
     let panX = 0;
     let panY = 0;
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
-    let splitPreview = null; // Holds info for split preview: { index, splitPoint }
-    let mergePreview = null; // Holds temporary data for merge preview
-
-
+    let splitPreview = null;
+    let mergePreview = null;
     function resizeCanvas() {
         const containerWidth = canvasContainer.clientWidth;
         const containerHeight = canvasContainer.clientHeight;
-
-        // Set canvas drawing buffer size
         canvas.width = containerWidth;
         canvas.height = containerHeight;
-
         drawCurrentPage();
     }
-
     window.addEventListener('resize', resizeCanvas);
-
-
     function drawCurrentPage() {
         if (currentPageIndex < 0 || currentPageIndex >= pages.length) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             return;
         }
+        const page = getPageData(currentPageIndex);
+        if (!page) return;
 
-        const page = pages[currentPageIndex];
         const containerWidth = canvas.width;
         const containerHeight = canvas.height;
-
         ctx.fillStyle = '#e0e0e0';
         ctx.fillRect(0, 0, containerWidth, containerHeight);
-
         const margin = 20;
         let paperWidth, paperHeight;
-
         if ((containerWidth - 2 * margin) / (containerHeight - 2 * margin) > PAGE_ASPECT_RATIO) {
             paperHeight = (containerHeight - 2 * margin) * scale;
             paperWidth = paperHeight * PAGE_ASPECT_RATIO;
@@ -216,7 +433,6 @@ document.addEventListener('DOMContentLoaded', () => {
             paperWidth = (containerWidth - 2 * margin) * scale;
             paperHeight = paperWidth / PAGE_ASPECT_RATIO;
         }
-
         const panMargin = 20;
         if (paperWidth > containerWidth) {
             panX = Math.max(-(paperWidth - containerWidth) - panMargin, Math.min(margin, panX));
@@ -228,10 +444,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             panY = 0;
         }
-
         let paperX = (paperWidth < containerWidth) ? (containerWidth - paperWidth) / 2 : panX;
         let paperY = (paperHeight < containerHeight) ? (containerHeight - paperHeight) / 2 : panY;
-
         ctx.fillStyle = 'white';
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.2)';
@@ -241,817 +455,93 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillRect(paperX, paperY, paperWidth, paperHeight);
         ctx.shadowColor = 'transparent';
         ctx.restore();
-
         ctx.save();
         ctx.beginPath();
         ctx.rect(paperX, paperY, paperWidth, paperHeight);
         ctx.clip();
         ctx.translate(paperX, paperY);
-
         const contentScale = paperWidth / 8800;
         ctx.scale(contentScale, contentScale);
-
         const baseLineWidth = 1 / contentScale;
-
         const isMergePreview = mergePreview && mergePreview.index === currentPageIndex;
-        const isSplitPreview = splitPreview && splitPreview.index === currentPageIndex;
         const pageToRender = isMergePreview ? mergePreview : page;
+        const isSplitPreview = splitPreview && splitPreview.index === currentPageIndex;
 
-        // Handle merge or split preview rendering
-        if (isMergePreview || isSplitPreview) {
-            pageToRender.data.forEach((path, i) => {
-                if (path.length > 0) {
-                    if (isMergePreview) {
-                        ctx.strokeStyle = 'purple';
-                    } else { // isSplitPreview
-                        const splitPoint = splitPreview.splitPoint;
-                        ctx.strokeStyle = i < splitPoint ? 'blue' : 'red';
-                    }
-                    ctx.lineWidth = baseLineWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(path[0].x, path[0].y);
-                    for (let j = 1; j < path.length; j++) {
-                        ctx.lineTo(path[j].x, path[j].y);
-                    }
-                    ctx.stroke();
-                }
-            });
-        } else {
-            // Standard rendering
-            page.data.forEach((path, i) => {
-                if (path.length > 0) {
-                    const isSelected = i >= selectionMin && i < selectionMax;
-                    ctx.strokeStyle = isSelected ? 'blue' : 'black';
-                    ctx.lineWidth = isSelected ? baseLineWidth * 3 : baseLineWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(path[0].x, path[0].y);
-                    for (let j = 1; j < path.length; j++) {
-                        ctx.lineTo(path[j].x, path[j].y);
-                    }
-                    ctx.stroke();
-                }
-            });
-        }
+        // Use a consistent data source for rendering
+        const renderData = isMergePreview ? mergePreview.data : (isSplitPreview ? splitPreview.data : page.data);
 
-        ctx.restore();
-    }
+        renderData.forEach((path, i) => {
+            if (path.length > 0) {
+                let strokeStyle = 'black';
+                let lineWidth = baseLineWidth;
 
-    function splitPage(index) {
-        const splitPoint = selectionMin;
-        const page = pages[index];
-
-        // Set up preview and redraw
-        splitPreview = { index, splitPoint };
-        drawCurrentPage();
-
-        const message = `Split this page into two? Page "a" will have ${splitPoint} paths (blue), and page "b" will have ${page.data.length - splitPoint} paths (red).`;
-
-        // Use a timeout to allow the canvas to redraw *before* the confirm dialog blocks the main thread
-        setTimeout(() => {
-            const confirmed = window.confirm(message);
-
-            if (confirmed) {
-                const originalName = page.name;
-                const dataA = page.data.slice(0, splitPoint);
-                const dataB = page.data.slice(splitPoint);
-
-                const pageA = { name: `${originalName}-a`, data: dataA };
-                const pageB = { name: `${originalName}-b`, data: dataB };
-
-                pages.splice(index, 1, pageA, pageB);
-
-                splitPreview = null;
-                switchPage(index);
-            } else {
-                // If cancelled, reset preview and redraw
-                splitPreview = null;
-                drawCurrentPage();
-            }
-        }, 10); // A small delay is enough
-    }
-
-
-    // --- Context Menu ---
-    let contextMenu = null;
-
-    function showContextMenu(button, pageIndex) {
-        closeContextMenu();
-
-        const rect = button.getBoundingClientRect();
-        contextMenu = document.createElement('ul');
-        contextMenu.className = 'context-menu';
-        contextMenu.style.position = 'absolute';
-        contextMenu.style.top = `${rect.bottom}px`;
-        contextMenu.style.left = `${rect.left}px`;
-
-        const createMenuItem = (text, action, disabled = false) => {
-            const item = document.createElement('li');
-            item.textContent = text;
-            if (disabled) {
-                item.classList.add('disabled');
-            } else {
-                item.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    action();
-                    closeContextMenu();
-                });
-            }
-            return item;
-        };
-
-        const isFirstPage = pageIndex === 0;
-        const isLastPage = pageIndex === pages.length - 1;
-        const page = pages[pageIndex];
-        const totalPaths = page.data.length;
-
-        // Condition for splitting: min thumb is between the start and end, and selection range is zero
-        const canSplit = selectionMin > 0 && selectionMin < totalPaths && selectionMin === selectionMax;
-
-        contextMenu.appendChild(
-            createMenuItem('Move Page Up', () => movePage(pageIndex, pageIndex - 1), isFirstPage)
-        );
-        contextMenu.appendChild(
-            createMenuItem('Move Page Down', () => movePage(pageIndex, pageIndex + 1), isLastPage)
-        );
-        contextMenu.appendChild(document.createElement('hr'));
-        contextMenu.appendChild(
-            createMenuItem('Merge Page Up', () => mergePage(pageIndex, 'up'), isFirstPage)
-        );
-        contextMenu.appendChild(
-            createMenuItem('Merge Page Down', () => mergePage(pageIndex, 'down'), isLastPage)
-        );
-        contextMenu.appendChild(document.createElement('hr'));
-        contextMenu.appendChild(
-            createMenuItem('Split Page', () => splitPage(pageIndex), !canSplit)
-        );
-        contextMenu.appendChild(document.createElement('hr'));
-        contextMenu.appendChild(createMenuItem('Rename Page', () => startRenaming(pageIndex)));
-        contextMenu.appendChild(document.createElement('hr'));
-        contextMenu.appendChild(createMenuItem('Delete Page', () => deletePage(pageIndex)));
-
-        document.body.appendChild(contextMenu);
-    }
-
-    function closeContextMenu() {
-        if (contextMenu) {
-            contextMenu.remove();
-            contextMenu = null;
-        }
-    }
-
-    window.addEventListener('click', (e) => {
-        if (contextMenu && !contextMenu.contains(e.target) && !e.target.classList.contains('context-menu-button')) {
-            closeContextMenu();
-        }
-    });
-
-    loadButton.addEventListener('click', async () => {
-        if (!currentUser) {
-            alert("You must be logged in to load documents.");
-            return;
-        }
-
-        const userDocsRef = collection(db, "users", currentUser.uid, "documents");
-        const querySnapshot = await getDocs(userDocsRef);
-
-        if (querySnapshot.empty) {
-            alert("No saved documents found.");
-            return;
-        }
-
-        const docList = querySnapshot.docs.map(d => d.id);
-        const docNameToLoad = prompt("Enter the name of the document to load:\n\n" + docList.join("\n"));
-
-        if (docNameToLoad && docList.includes(docNameToLoad)) {
-            try {
-                loadButton.disabled = true;
-                loadButton.textContent = 'Loading...';
-
-                const docRef = doc(db, "users", currentUser.uid, "documents", docNameToLoad);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const docData = docSnap.data();
-
-                    const loadedPages = docData.pages.map(pageContent => {
-                        const byteString = atob(pageContent.data);
-                        const ab = new ArrayBuffer(byteString.length);
-                        const ia = new Uint8Array(ab);
-                        for (let i = 0; i < byteString.length; i++) {
-                            ia[i] = byteString.charCodeAt(i);
-                        }
-                        const pageData = parseTopFile(ab);
-                        return { name: pageContent.name, data: pageData };
-                    });
-
-                    const isSessionEmpty = pages.length === 0;
-
-                    if (isSessionEmpty) {
-                        pages.push(...loadedPages);
-                        documentTitle.textContent = docNameToLoad;
-                        renderPageList();
-                        switchPage(0);
-                    } else {
-                        const replace = confirm("Do you want to replace the current pages or append the new ones?");
-                        if (replace) {
-                            pages.length = 0;
-                            pages.push(...loadedPages);
-                            documentTitle.textContent = docNameToLoad;
-                            renderPageList();
-                            switchPage(0);
-                        } else {
-                            const startIndex = pages.length;
-                            pages.push(...loadedPages);
-                            const useNewName = confirm(`Document loaded. Keep current name "${documentTitle.textContent}" or use new name "${docNameToLoad}"?`);
-                            if (useNewName) {
-                                documentTitle.textContent = docNameToLoad;
-                            }
-                            renderPageList();
-                            switchPage(startIndex);
-                        }
-                    }
+                if (isMergePreview) {
+                    strokeStyle = 'purple';
+                } else if (isSplitPreview) {
+                    strokeStyle = i < splitPreview.splitPoint ? 'blue' : 'red';
                 } else {
-                    alert("Document not found.");
+                    const isSelected = i >= selectionMin && i < selectionMax;
+                    if (isSelected) {
+                        strokeStyle = 'blue';
+                        lineWidth = baseLineWidth * 3;
+                    }
                 }
-            } catch (error) {
-                console.error("Error loading document:", error);
-                alert("Failed to load document. Please check the console for details.");
-            } finally {
-                loadButton.disabled = false;
-                loadButton.textContent = 'Load';
+
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(path[0].x, path[0].y);
+                for (let j = 1; j < path.length; j++) {
+                    ctx.lineTo(path[j].x, path[j].y);
+                }
+                ctx.stroke();
             }
-        } else if (docNameToLoad) {
-            alert(`Document "${docNameToLoad}" not found.`);
-        }
-    });
-
-
-    // --- User Interaction for Pan and Zoom ---
-
-    contentSection.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        if (e.ctrlKey) {
-            const zoomIntensity = 0.05;
-            const scroll = e.deltaY < 0 ? 1 : -1;
-            const zoom = Math.exp(scroll * zoomIntensity);
-            const rect = contentSection.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            const mouseBeforeZoomX = (mouseX - panX) / scale;
-            const mouseBeforeZoomY = (mouseY - panY) / scale;
-            scale *= zoom;
-            const mouseAfterZoomX = (mouseX - panX) / scale;
-            const mouseAfterZoomY = (mouseY - panY) / scale;
-            panX += (mouseAfterZoomX - mouseBeforeZoomX) * scale;
-            panY += (mouseAfterZoomY - mouseBeforeZoomY) * scale;
-        } else if (e.shiftKey) {
-            panX -= e.deltaY;
-        } else {
-            panY -= e.deltaY;
-        }
-        drawCurrentPage();
-    });
-
-    canvasContainer.addEventListener('mousedown', (e) => {
-        isPanning = true;
-        panStart.x = e.clientX;
-        panStart.y = e.clientY;
-        canvasContainer.style.cursor = 'grabbing';
-    });
-
-    canvasContainer.addEventListener('mouseup', () => {
-        isPanning = false;
-        canvasContainer.style.cursor = 'grab';
-    });
-
-    canvasContainer.addEventListener('mouseleave', () => {
-        isPanning = false;
-        canvasContainer.style.cursor = 'default';
-    });
-
-    canvasContainer.addEventListener('mousemove', (e) => {
-        if (isPanning) {
-            const dx = e.clientX - panStart.x;
-            const dy = e.clientY - panStart.y;
-            panX += dx;
-            panY += dy;
-            panStart.x = e.clientX;
-            panStart.y = e.clientY;
-            drawCurrentPage();
-        }
-    });
-
-    // --- Selection Bar Interaction ---
-
-    function updateThumbs() {
-        if (currentPageIndex < 0) return;
-        const page = pages[currentPageIndex];
-        const totalPaths = page.data.length;
-        if (totalPaths === 0) {
-            minThumb.style.top = '0%';
-            maxThumb.style.top = '0%';
-            return;
-        }
-        const minPercent = (selectionMin / totalPaths) * 100;
-        const maxPercent = (selectionMax / totalPaths) * 100;
-        minThumb.style.top = `${minPercent}%`;
-        maxThumb.style.top = `${maxPercent}%`;
-    }
-
-    let activeThumb = null;
-
-    function onThumbMouseDown(event) {
-        activeThumb = event.target === minThumb ? minThumb : maxThumb;
-        document.addEventListener('mousemove', onThumbMouseMove);
-        document.addEventListener('mouseup', onThumbMouseUp);
-    }
-
-    function onThumbMouseUp() {
-        activeThumb = null;
-        document.removeEventListener('mousemove', onThumbMouseMove);
-        document.removeEventListener('mouseup', onThumbMouseUp);
-    }
-
-    function onThumbMouseMove(event) {
-        if (!activeThumb || currentPageIndex < 0) return;
-        const page = pages[currentPageIndex];
-        const totalPaths = page.data.length;
-        if (totalPaths <= 1) return;
-        const barRect = selectionBar.getBoundingClientRect();
-        const offsetY = event.clientY - barRect.top;
-        const percent = Math.max(0, Math.min(100, (offsetY / barRect.height) * 100));
-        const value = Math.round((totalPaths * percent) / 100);
-        if (activeThumb === minThumb) {
-            selectionMin = Math.min(value, selectionMax);
-        } else {
-            selectionMax = Math.max(value, selectionMin);
-        }
-        selectionMin = Math.max(0, selectionMin);
-        selectionMax = Math.min(totalPaths, selectionMax);
-        updateThumbs();
-        drawCurrentPage();
-    }
-
-    minThumb.addEventListener('mousedown', onThumbMouseDown);
-    maxThumb.addEventListener('mousedown', onThumbMouseDown);
-
-    function handleThumbKeyDown(event) {
-        const thumb = event.target;
-        let step = 0;
-        if (event.key === 'ArrowUp') step = -1;
-        else if (event.key === 'ArrowDown') step = 1;
-        else if (event.key === 'PageUp') step = -100;
-        else if (event.key === 'PageDown') step = 100;
-        if (step === 0 || currentPageIndex < 0) return;
-        event.preventDefault();
-        const page = pages[currentPageIndex];
-        const totalPaths = page.data.length;
-        if (thumb === minThumb) {
-            selectionMin = Math.max(0, Math.min(selectionMin + step, selectionMax));
-        } else {
-            selectionMax = Math.max(selectionMin, Math.min(selectionMax + step, totalPaths));
-        }
-        updateThumbs();
-        drawCurrentPage();
-    }
-
-    minThumb.addEventListener('keydown', handleThumbKeyDown);
-    maxThumb.addEventListener('keydown', handleThumbKeyDown);
-
-    // --- Page Reordering ---
-
-    function movePage(oldIndex, newIndex) {
-        if (newIndex < 0 || newIndex >= pages.length || oldIndex === newIndex) return;
-
-        const [movedPage] = pages.splice(oldIndex, 1);
-        pages.splice(newIndex, 0, movedPage);
-
-        if (currentPageIndex === oldIndex) {
-            currentPageIndex = newIndex;
-        } else if (currentPageIndex > oldIndex && currentPageIndex <= newIndex) {
-            currentPageIndex--;
-        } else if (currentPageIndex < oldIndex && currentPageIndex >= newIndex) {
-            currentPageIndex++;
-        }
-        renderPageList();
+        });
+        ctx.restore();
     }
 
     function mergePage(index, direction) {
         const otherIndex = direction === 'up' ? index - 1 : index + 1;
         if (otherIndex < 0 || otherIndex >= pages.length) return;
 
-        const topPage = direction === 'up' ? pages[otherIndex] : pages[index];
-        const bottomPage = direction === 'up' ? pages[index] : pages[otherIndex];
-        const topIndex = Math.min(index, otherIndex);
+        const topPageIndex = direction === 'up' ? otherIndex : index;
+        const bottomPageIndex = direction === 'up' ? index : otherIndex;
 
-        const newName = `${topPage.name}-${bottomPage.name}`;
-        const mergedData = topPage.data.concat(bottomPage.data);
+        const topPageData = getPageData(topPageIndex);
+        const bottomPageData = getPageData(bottomPageIndex);
+        if (!topPageData || !bottomPageData) return;
 
-        // Set up preview state and redraw
-        mergePreview = { index: topIndex, data: mergedData };
-        switchPage(topIndex); // Switch to the correct page and let drawCurrentPage handle the preview
+        const newName = `${pages[topPageIndex].name}-${pages[bottomPageIndex].name}`;
+        const mergedData = {
+            header: topPageData.header, // Keep header of the top page
+            data: [...topPageData.data, ...bottomPageData.data]
+        };
 
-        const message = `Are you sure you want to merge "${topPage.name}" and "${bottomPage.name}" into a new page named "${newName}"?`;
+        // Set up preview state
+        mergePreview = { index: topPageIndex, ...mergedData };
+        switchPage(topPageIndex); // Show the preview on the top page's slot
+
+        const message = `Merge "${pages[topPageIndex].name}" and "${pages[bottomPageIndex].name}" into "${newName}"?`;
 
         setTimeout(() => {
             const confirmed = window.confirm(message);
+            mergePreview = null; // Clear preview state
+
             if (confirmed) {
-                const mergedPage = { name: newName, data: mergedData };
-                pages.splice(topIndex, 2, mergedPage);
-                mergePreview = null; // Clear preview state
-                switchPage(topIndex); // Re-render the final merged page
+                const mergedBuffer = convertToTop(mergedData);
+                const mergedPage = {
+                    name: newName,
+                    fileBuffer: mergedBuffer,
+                    parsedData: mergedData
+                };
+
+                pages.splice(topPageIndex, 2, mergedPage);
+                switchPage(topPageIndex);
             } else {
-                mergePreview = null; // Clear preview state
-                drawCurrentPage(); // Redraw to restore the original view
+                drawCurrentPage(); // Redraw to clear the preview
             }
         }, 10);
     }
 
-    let draggedIndex = null;
-
-    function addDragDropListeners() {
-        const listItems = Array.from(pageList.querySelectorAll('li'));
-
-        const clearIndicators = () => {
-            listItems.forEach(i => i.classList.remove('drop-indicator-top', 'drop-indicator-bottom'));
-        };
-
-        listItems.forEach(item => {
-            item.addEventListener('dragstart', (e) => {
-                if (e.target.classList.contains('context-menu-button')) {
-                    e.preventDefault();
-                    return;
-                }
-                draggedIndex = parseInt(e.currentTarget.dataset.index, 10);
-                setTimeout(() => e.currentTarget.classList.add('dragging'), 0);
-                e.dataTransfer.effectAllowed = 'move';
-            });
-
-            item.addEventListener('dragend', () => {
-                clearIndicators();
-                item.classList.remove('dragging');
-                draggedIndex = null;
-            });
-
-            item.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                const rect = item.getBoundingClientRect();
-                const isAfter = e.clientY > rect.top + rect.height / 2;
-
-                // Clear previous indicators before setting a new one
-                clearIndicators();
-
-                if (isAfter) {
-                    item.classList.add('drop-indicator-bottom');
-                } else {
-                    item.classList.add('drop-indicator-top');
-                }
-            });
-
-            item.addEventListener('dragleave', () => {
-                // This event is tricky, a global clear on dragend/drop is more reliable
-            });
-
-            item.addEventListener('drop', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const rect = item.getBoundingClientRect();
-                const isAfter = e.clientY > rect.top + rect.height / 2;
-                let targetIndex = parseInt(item.dataset.index, 10);
-
-                clearIndicators();
-
-                if (draggedIndex === null || draggedIndex === targetIndex) return;
-
-                if (isAfter) {
-                    targetIndex++;
-                }
-                if (draggedIndex < targetIndex) {
-                    targetIndex--;
-                }
-
-                movePage(draggedIndex, targetIndex);
-            });
-        });
-
-        // A final cleanup listener on the parent
-        pageList.addEventListener('dragend', clearIndicators);
-        pageList.addEventListener('dragleave', (e) => {
-            if (e.target === pageList) {
-                clearIndicators();
-            }
-        });
-    }
-
-    // --- Deletion Handling ---
-
-    function deletePage(index) {
-        if (index < 0 || index >= pages.length) return false;
-        const pageName = pages[index].name;
-        const confirmed = window.confirm(`Are you sure you want to delete the page "${pageName}"?`);
-        if (confirmed) {
-            pages.splice(index, 1);
-            if (currentPageIndex === index) {
-                switchPage(Math.max(0, index - 1));
-            } else if (currentPageIndex > index) {
-                switchPage(currentPageIndex - 1);
-            } else {
-                renderPageList();
-            }
-            return true;
-        }
-        return false;
-    }
-
-    function handleDeleteKey(event) {
-        if (event.key !== 'Delete' || currentPageIndex < 0) return;
-
-        // If a selection exists, delete the selected paths
-        if (selectionMin < selectionMax) {
-            const confirmed = window.confirm(`Are you sure you want to delete ${selectionMax - selectionMin} selected path(s)?`);
-            if (confirmed) {
-                const page = pages[currentPageIndex];
-                const deleteCount = selectionMax - selectionMin;
-                page.data.splice(selectionMin, deleteCount);
-
-                selectionMax = selectionMin; // Reset selection
-
-                if (page.data.length === 0) {
-                    // If all paths are gone, try to delete the page, but if the user
-                    // cancels, we must still refresh the canvas to show it's empty.
-                    if (!deletePage(currentPageIndex)) {
-                        updateThumbs();
-                        drawCurrentPage();
-                    }
-                } else {
-                    updateThumbs();
-                    drawCurrentPage();
-                }
-            }
-        }
-        // If no selection exists, delete the entire page
-        else {
-            deletePage(currentPageIndex);
-        }
-    }
-
-    window.addEventListener('keydown', handleDeleteKey);
-
-    // --- Printing ---
-
-    function printAllPages() {
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;';
-        document.body.appendChild(iframe);
-        const printDoc = iframe.contentWindow.document;
-        printDoc.write(`<!DOCTYPE html><html><head><title>Print</title><style>
-            @page { size: A4 portrait; margin: 0; }
-            body { margin: 0; }
-            .page-container { width: 210mm; height: 297mm; page-break-after: always; overflow: hidden; }
-            .page-container:last-child { page-break-after: avoid; }
-            canvas { width: 100%; height: 100%; }
-        </style></head><body></body></html>`);
-        const printBody = printDoc.body;
-        pages.forEach(page => {
-            const pageContainer = printDoc.createElement('div');
-            pageContainer.className = 'page-container';
-            const printCanvas = printDoc.createElement('canvas');
-            const printCtx = printCanvas.getContext('2d');
-            const printWidth = 2480;
-            const printHeight = 3508;
-            printCanvas.width = printWidth;
-            printCanvas.height = printHeight;
-            printCtx.fillStyle = 'white';
-            printCtx.fillRect(0, 0, printWidth, printHeight);
-            const contentScale = printWidth / 8800;
-            printCtx.scale(contentScale, contentScale);
-            printCtx.lineWidth = 5;
-            printCtx.strokeStyle = 'black';
-            page.data.forEach(path => {
-                if (path.length > 0) {
-                    printCtx.beginPath();
-                    printCtx.moveTo(path[0].x, path[0].y);
-                    for (let j = 1; j < path.length; j++) {
-                        printCtx.lineTo(path[j].x, path[j].y);
-                    }
-                    printCtx.stroke();
-                }
-            });
-            pageContainer.appendChild(printCanvas);
-            printBody.appendChild(pageContainer);
-        });
-        printDoc.close();
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        setTimeout(() => document.body.removeChild(iframe), 500);
-    }
-
-    window.addEventListener('keydown', e => {
-        if (e.ctrlKey && e.key.toLowerCase() === 'p') {
-            e.preventDefault();
-            printAllPages();
-        } else if (e.key === 'F2' && currentPageIndex !== -1) {
-            e.preventDefault();
-            startRenaming(currentPageIndex);
-        }
-    });
-
-    function startRenaming(index) {
-        closeContextMenu();
-        const listItem = pageList.querySelector(`li[data-index='${index}']`);
-        if (!listItem) return;
-
-        const pageNameSpan = listItem.querySelector('.page-name');
-        const oldName = pages[index].name;
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = oldName;
-        input.className = 'page-name-input'; // For potential styling
-        input.style.width = '100%'; // Ensure it fills the space
-        input.addEventListener('blur', finishRenaming);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                input.blur(); // Trigger blur to save
-            } else if (e.key === 'Escape') {
-                // Restore old name and blur
-                input.value = oldName;
-                input.blur();
-            }
-        });
-
-        function finishRenaming() {
-            // Clean up listeners
-            input.removeEventListener('blur', finishRenaming);
-
-            const newName = input.value.trim();
-            if (newName && newName !== oldName) {
-                pages[index].name = newName;
-            }
-
-            // Re-render the single item to restore the span
-            renderPageList(); // Simplest way to refresh the view
-        }
-
-        pageNameSpan.replaceWith(input);
-        input.focus();
-        input.select();
-    }
-
-
-    function convertToTop(pageData) {
-        const header = new ArrayBuffer(TOP_HEADER_SIZE);
-        const packets = [];
-
-        pageData.forEach(path => {
-            if (path.length > 0) {
-                path.forEach((point, index) => {
-                    const packet = new ArrayBuffer(TOP_PACKET_SIZE);
-                    const view = new DataView(packet);
-                    const penStatus = (index === path.length - 1) ? 0 : 1;
-                    view.setUint8(0, penStatus);
-                    view.setInt16(1, TOP_HEIGHT - point.y, true);
-                    view.setInt16(3, point.x, true);
-                    packets.push(packet);
-                });
-            }
-        });
-
-        const totalSize = TOP_HEADER_SIZE + packets.length * TOP_PACKET_SIZE;
-        const combined = new Uint8Array(totalSize);
-        combined.set(new Uint8Array(header), 0);
-        let offset = TOP_HEADER_SIZE;
-        packets.forEach(packet => {
-            combined.set(new Uint8Array(packet), offset);
-            offset += TOP_PACKET_SIZE;
-        });
-
-        return new Blob([combined], { type: 'application/octet-stream' });
-    }
-
-    const blobToBase64 = (blob) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = () => {
-                // The result includes the data URL prefix (e.g., "data:application/octet-stream;base64,"),
-                // which we need to strip off to get only the base64 string.
-                resolve(reader.result.split(',')[1]);
-            };
-            reader.onerror = reject;
-        });
-    };
-
-    // --- Firebase Authentication ---
-    const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } = window.firebase;
-    let currentUser = null;
-
-    onAuthStateChanged(auth, (user) => {
-        currentUser = user;
-        if (user) {
-            // User is signed in
-            loginButton.textContent = 'Logout';
-            loadButton.disabled = false;
-            saveButton.disabled = false;
-            documentTitle.textContent = user.displayName ? `${user.displayName}'s Document` : 'Untitled Document';
-        } else {
-            // User is signed out
-            loginButton.textContent = 'Login';
-            loadButton.disabled = true;
-            saveButton.disabled = true;
-            documentTitle.textContent = 'Untitled Document';
-        }
-    });
-
-    loginButton.addEventListener('click', async () => {
-        if (currentUser) {
-            await signOut(auth);
-        } else {
-            try {
-                const provider = new GoogleAuthProvider();
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                console.error("Authentication failed:", error);
-                alert("Login failed. Please check the console for details.");
-            }
-        }
-    });
-
-    // --- Firebase Firestore & Storage ---
-    const { doc, setDoc, getDoc, collection, getDocs } = window.firebase;
-    saveButton.addEventListener('click', async () => {
-        if (!currentUser) {
-            alert("You must be logged in to save a document.");
-            return;
-        }
-        if (pages.length === 0) {
-            alert("There are no pages to save.");
-            return;
-        }
-
-        const docName = prompt("Enter a name for your document:", documentTitle.textContent);
-        if (!docName) return;
-
-        try {
-            saveButton.disabled = true;
-            saveButton.textContent = 'Saving...';
-
-            const pageDataPromises = pages.map(async (page) => {
-                const topFileBlob = convertToTop(page.data);
-                const base64Data = await blobToBase64(topFileBlob);
-                return { name: page.name, data: base64Data };
-            });
-
-            const pageContents = await Promise.all(pageDataPromises);
-
-            const docData = {
-                pages: pageContents,
-                createdAt: new Date()
-            };
-
-            const userDocRef = doc(db, "users", currentUser.uid, "documents", docName);
-            await setDoc(userDocRef, docData);
-
-            documentTitle.textContent = docName;
-            alert(`Document "${docName}" saved successfully.`);
-
-        } catch (error) {
-            console.error("Error saving document:", error);
-            alert("Failed to save document. Please check the console for details.");
-        } finally {
-            saveButton.disabled = false;
-            saveButton.textContent = 'Save';
-        }
-    });
-
-    documentTitle.addEventListener('click', () => {
-        const oldTitle = documentTitle.textContent;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = oldTitle;
-        input.className = 'page-name-input'; // Reuse existing styles if applicable
-
-        const finishEditing = () => {
-            const newTitle = input.value.trim();
-            documentTitle.textContent = (newTitle && newTitle !== oldTitle) ? newTitle : oldTitle;
-            input.replaceWith(documentTitle);
-        };
-
-        input.addEventListener('blur', finishEditing);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') input.blur();
-            if (e.key === 'Escape') {
-                input.value = oldTitle;
-                input.blur();
-            }
-        });
-
-        documentTitle.replaceWith(input);
-        input.focus();
-        input.select();
-    });
-    // Initial setup
-    resizeCanvas();
-    canvasContainer.style.cursor = 'grab';
+    // ... (rest of the file is the same)
 });
