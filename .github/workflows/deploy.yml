@@ -36,13 +36,13 @@ jobs:
       - name: Replace placeholders with secrets
         run: |
           sed -i "s/PLACEHOLDER_API_KEY/${{ secrets.FIREBASE_API_KEY }}/g" dist/index.html
-          # sed -i 's|src="app.js"|src="app.min.js"|' dist/index.html
+          sed -i 's|src="app.js"|src="app.min.js"|' dist/index.html
 
-      # - name: Bundle, Minify, and Obfuscate JavaScript
-      #   run: terser dist/app.js --compress --mangle --output dist/app.min.js
+      - name: Bundle, Minify, and Obfuscate JavaScript
+        run: terser dist/app.js --compress --mangle --output dist/app.min.js
 
-      # - name: Remove original JS file from dist
-      #   run: rm dist/app.js
+      - name: Remove original JS file from dist
+        run: rm dist/app.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
