@@ -1244,7 +1244,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         blockView.setUint8(0, firstByte);
                         blockView.setInt16(1, currentX, true);
                         blockView.setInt16(3, currentY, true);
-                    blockView.setUint8(5, currentP);
+                        blockView.setUint8(5, currentP);
                         compressedChunks.push(blockView.buffer);
                     }
                 }
