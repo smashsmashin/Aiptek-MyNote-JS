@@ -59,12 +59,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Optionally, alert the user or skip the file.
                         return resolve(null); // Resolve with null to filter out later
                     }
-                    const header = rawData.slice(0, TOP_HEADER_SIZE);
                     // Page data is now the raw ArrayBuffer, paths are parsed on demand.
                     pages.push({
                         name: file.name,
                         rawData: rawData,
-                        header: header,
                         paths: null // Paths will be parsed when the page is selected
                     });
                     resolve(true);
@@ -347,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const newRawData = new ArrayBuffer(TOP_HEADER_SIZE + totalDataLength);
                     const newView = new Uint8Array(newRawData);
-                    newView.set(new Uint8Array(page.header), 0); // Copy header
+                    newView.set(new Uint8Array(page.rawData.slice(0, TOP_HEADER_SIZE)), 0); // Copy header
 
                     let currentOffset = TOP_HEADER_SIZE;
                     for (const segment of dataSegments) {
@@ -365,7 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     newPages.push({
                         name: `${originalName}-a.top`,
                         rawData: rawDataA,
-                        header: page.header, // Both get the same header
                         paths: null // Re-parse on demand
                     });
                 }
@@ -373,7 +370,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     newPages.push({
                         name: `${originalName}-b.top`,
                         rawData: rawDataB,
-                        header: page.header,
                         paths: null // Re-parse on demand
                     });
                 }
@@ -511,11 +507,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Decompress the data after loading
                         const rawData = decompressPointsWithHeader(compressedData);
 
-                        const header = rawData.slice(0, TOP_HEADER_SIZE);
                         return {
                             name: pageContent.name,
                             rawData: rawData,
-                            header: header,
                             paths: null // Parse on demand
                         };
                     });
@@ -742,10 +736,10 @@ document.addEventListener('DOMContentLoaded', () => {
             mergePreview = null; // Clear preview state
 
             if (confirmed) {
-                let finalHeader = topPage.header;
+                let finalHeader = topPage.rawData.slice(0, TOP_HEADER_SIZE);
                 // Compare headers by converting them to strings
-                const topHeaderStr = String.fromCharCode.apply(null, new Uint8Array(topPage.header));
-                const bottomHeaderStr = String.fromCharCode.apply(null, new Uint8Array(bottomPage.header));
+                const topHeaderStr = String.fromCharCode.apply(null, new Uint8Array(topPage.rawData.slice(0, TOP_HEADER_SIZE)));
+                const bottomHeaderStr = String.fromCharCode.apply(null, new Uint8Array(bottomPage.rawData.slice(0, TOP_HEADER_SIZE)));
 
                 if (topHeaderStr !== bottomHeaderStr) {
                     let choice = prompt(`The headers of "${topPage.name}" and "${bottomPage.name}" are different. Which header do you want to use? Type 'top' or 'bottom'.`, 'top');
@@ -753,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         choice = prompt(`Invalid choice. Please type 'top' or 'bottom'.`, 'top');
                     }
                     if (choice && choice.toLowerCase() === 'bottom') {
-                        finalHeader = bottomPage.header;
+                        finalHeader = bottomPage.rawData.slice(0, TOP_HEADER_SIZE);
                     }
                 }
 
@@ -770,7 +764,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const mergedPage = {
                     name: newName,
                     rawData: newRawData,
-                    header: finalHeader,
                     paths: null // Will be re-parsed on next selection
                 };
 
@@ -901,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newRawData = new ArrayBuffer(TOP_HEADER_SIZE + remainingDataSize);
                     const newView = new Uint8Array(newRawData);
 
-                    newView.set(new Uint8Array(page.header), 0);
+                    newView.set(new Uint8Array(page.rawData.slice(0, TOP_HEADER_SIZE)), 0);
                     let currentOffset = TOP_HEADER_SIZE;
                     remainingPaths.forEach(path => {
                         const segment = page.rawData.slice(path.offset, path.offset + path.length);
