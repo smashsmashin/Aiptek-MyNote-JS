@@ -567,7 +567,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("Error loading document:", error);
                 showNotification("Failed to load document. Please check the console for details.");
             } finally {
-                loadButton.disabled = false;
+                if (currentUser) {
+                    loadButton.disabled = false;
+                }
                 loadIcon.textContent = 'file_upload';
                 loadIcon.classList.remove('spinner');
             }
@@ -1158,7 +1160,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Error saving document:", error);
             showNotification("Failed to save document. Please check the console for details.");
         } finally {
-            saveButton.disabled = false;
+            if (currentUser) {
+                saveButton.disabled = false;
+            }
             saveIcon.textContent = 'save';
             saveIcon.classList.remove('spinner');
         }
