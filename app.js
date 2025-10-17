@@ -790,8 +790,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.preventDefault();
                     return;
                 }
-                draggedIndex = parseInt(e.currentTarget.dataset.index, 10);
-                setTimeout(() => e.currentTarget.classList.add('dragging'), 0);
+                const draggedItem = e.currentTarget;
+                draggedIndex = parseInt(draggedItem.dataset.index, 10);
+                setTimeout(() => draggedItem.classList.add('dragging'), 0);
                 e.dataTransfer.effectAllowed = 'move';
             });
 
