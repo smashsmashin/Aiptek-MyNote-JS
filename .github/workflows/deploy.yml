@@ -6,6 +6,7 @@ on:
       - main
       - feat/obfuscate-api-key
       - firebase-integration
+      - feat/refactor-data-handling
 
 jobs:
   build-and-deploy:
