@@ -15,6 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadButton = document.getElementById('load-button');
     const saveButton = document.getElementById('save-button');
     const loginButton = document.getElementById('login-button');
+    const userMenu = document.getElementById('user-menu');
+    const userAvatar = document.getElementById('user-avatar');
+    const userDropdown = document.getElementById('user-dropdown');
+    const switchUserButton = document.getElementById('switch-user-button');
+    const logoutButton = document.getElementById('logout-button');
 
     const pages = [];
     let currentPageIndex = -1;
@@ -1046,13 +1051,16 @@ document.addEventListener('DOMContentLoaded', () => {
         currentUser = user;
         if (user) {
             // User is signed in
-            loginButton.textContent = 'Logout';
+            loginButton.style.display = 'none';
+            userMenu.style.display = 'block';
+            userAvatar.src = user.photoURL;
             loadButton.disabled = false;
             saveButton.disabled = false;
             documentTitle.textContent = user.displayName ? `${user.displayName}'s Document` : 'Untitled Document';
         } else {
             // User is signed out
-            loginButton.textContent = 'Login';
+            loginButton.style.display = 'block';
+            userMenu.style.display = 'none';
             loadButton.disabled = true;
             saveButton.disabled = true;
             documentTitle.textContent = 'Untitled Document';
@@ -1060,17 +1068,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     loginButton.addEventListener('click', async () => {
-        if (currentUser) {
-            await signOut(auth);
-        } else {
-            try {
-                const provider = new GoogleAuthProvider();
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                console.error("Authentication failed:", error);
-                alert("Login failed. Please check the console for details.");
-            }
+        try {
+            const provider = new GoogleAuthProvider();
+            await signInWithPopup(auth, provider);
+        } catch (error) {
+            console.error("Authentication failed:", error);
+            alert("Login failed. Please check the console for details.");
         }
+    });
+
+    logoutButton.addEventListener('click', async () => {
+        await signOut(auth);
+    });
+
+    switchUserButton.addEventListener('click', async () => {
+        await signOut(auth);
+        try {
+            const provider = new GoogleAuthProvider();
+            await signInWithPopup(auth, provider);
+        } catch (error) {
+            console.error("Authentication failed:", error);
+            alert("Login failed. Please check the console for details.");
+        }
+    });
+
+    userAvatar.addEventListener('click', () => {
+        userDropdown.style.display = userDropdown.style.display === 'block' ? 'none' : 'block';
     });
 
     // --- Firebase Firestore & Storage ---
