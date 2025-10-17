@@ -390,6 +390,10 @@ document.addEventListener('DOMContentLoaded', () => {
         addDragDropListeners();
     }
 
+    function addDragDropListeners() {
+        console.log("Drag and drop listeners are not implemented yet.");
+    }
+
     function switchPage(index) {
         if (index < 0 || index >= pages.length) {
             if (pages.length === 0) {
