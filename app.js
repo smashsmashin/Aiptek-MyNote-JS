@@ -351,6 +351,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return buffer;
     }
 
+    function showContextMenu(target, index) {
+        console.log("Context menu for page " + index + " requested.");
+    }
+
+    function closeContextMenu() {
+        const existingMenu = document.querySelector('.context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+    }
+
     function renderPageList() {
         pageList.innerHTML = '';
         closeContextMenu();
