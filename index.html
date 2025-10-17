@@ -104,6 +104,10 @@
             font-weight: bold;
             cursor: pointer;
         }
+        #title-bar-actions {
+            display: flex;
+            align-items: center;
+        }
         #title-bar-actions button {
             margin-left: 10px;
             background: none;
@@ -234,9 +238,31 @@
             box-shadow: 0 0 0 2px rgba(108, 117, 125, 0.5);
         }
 
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #notification-area {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 1001;
+            display: none;
+        }
     </style>
 </head>
 <body>
+    <div id="notification-area"></div>
     <div id="title-bar">
         <span id="document-title">Untitled Document</span>
         <div id="title-bar-actions">
