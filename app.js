@@ -481,8 +481,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('click', (e) => {
+        // Close context menu if click is outside
         if (contextMenu && !contextMenu.contains(e.target) && !e.target.classList.contains('context-menu-button')) {
             closeContextMenu();
+        }
+
+        // Close user dropdown if click is outside
+        if (userDropdown.style.display === 'block' && !userMenu.contains(e.target)) {
+            userDropdown.style.display = 'none';
         }
     });
 
