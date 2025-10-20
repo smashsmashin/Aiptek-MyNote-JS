@@ -238,6 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.height = containerHeight;
 
         drawCurrentPage();
+    canvas.style.visibility = 'visible';
     }
 
     window.addEventListener('resize', resizeCanvas);
@@ -1212,6 +1213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renameButton.addEventListener('click', startDocumentRename);
 
     menuButton.addEventListener('click', () => {
+        canvas.style.visibility = 'hidden';
         const isVisible = indexSection.classList.contains('force-show') ||
                           (window.innerWidth > 768 && !indexSection.classList.contains('force-hide'));
 
