@@ -1095,7 +1095,7 @@ document.addEventListener('DOMContentLoaded', () => {
             documentTitle.textContent = user.displayName ? `${user.displayName}'s Document` : 'Untitled Document';
         } else {
             // User is signed out
-            loginButton.style.display = 'block';
+            loginButton.style.display = '';
             userMenu.style.display = 'none';
             documentTitle.textContent = 'Untitled Document';
         }
@@ -1231,6 +1231,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 indexSection.classList.add('force-show');
             }
         }
+
+        // Wait for the CSS transition to finish before resizing the canvas
+        setTimeout(resizeCanvas, 300); // 300ms matches the transition duration in style.css
     });
 
     // Initial setup
