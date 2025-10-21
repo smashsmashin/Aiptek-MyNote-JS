@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const pageList = document.getElementById('page-list');
+    const indexSection = document.getElementById('index-section');
     const contentSection = document.getElementById('content-section');
     const canvasContainer = document.getElementById('canvas-container');
     const canvas = document.getElementById('canvas');
@@ -11,10 +12,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const maxThumb = document.getElementById('max-thumb');
 
     const titleBar = document.getElementById('title-bar');
+    const menuButton = document.getElementById('menu-button');
     const documentTitle = document.getElementById('document-title');
+    const renameButton = document.getElementById('rename-button');
     const loadButton = document.getElementById('load-button');
     const saveButton = document.getElementById('save-button');
     const loginButton = document.getElementById('login-button');
+    const userMenu = document.getElementById('user-menu');
+    const userAvatar = document.getElementById('user-avatar');
+    const userDropdown = document.getElementById('user-dropdown');
+    const switchUserButton = document.getElementById('switch-user-button');
+    const logoutButton = document.getElementById('logout-button');
+    const notificationArea = document.getElementById('notification-area');
+
+    let notificationTimeout;
+
+    function showNotification(message, duration = 3000) {
+        notificationArea.textContent = message;
+        notificationArea.style.display = 'block';
+
+        clearTimeout(notificationTimeout);
+        notificationTimeout = setTimeout(() => {
+            notificationArea.style.display = 'none';
+        }, duration);
+    }
 
     const pages = [];
     let currentPageIndex = -1;
@@ -217,6 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.height = containerHeight;
 
         drawCurrentPage();
+    canvas.style.visibility = 'visible';
     }
 
     window.addEventListener('resize', resizeCanvas);
@@ -463,14 +485,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('click', (e) => {
+        // Close context menu if click is outside
         if (contextMenu && !contextMenu.contains(e.target) && !e.target.classList.contains('context-menu-button')) {
             closeContextMenu();
+        }
+
+        // Close user dropdown if click is outside
+        if (userDropdown.style.display === 'block' && !userMenu.contains(e.target)) {
+            userDropdown.style.display = 'none';
         }
     });
 
     loadButton.addEventListener('click', async () => {
-        if (!currentUser) {
-            alert("You must be logged in to load documents.");
+        if (!await ensureLoggedIn()) {
             return;
         }
 
@@ -478,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const querySnapshot = await getDocs(userDocsRef);
 
         if (querySnapshot.empty) {
-            alert("No saved documents found.");
+            showNotification("No saved documents found.");
             return;
         }
 
@@ -486,9 +513,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const docNameToLoad = prompt("Enter the name of the document to load:\n\n" + docList.join("\n"));
 
         if (docNameToLoad && docList.includes(docNameToLoad)) {
+            const loadIcon = loadButton.querySelector('svg');
             try {
                 loadButton.disabled = true;
-                loadButton.textContent = 'Loading...';
+                loadIcon.classList.add('spinner');
 
                 const docRef = doc(db, "users", currentUser.uid, "documents", docNameToLoad);
                 const docSnap = await getDoc(docRef);
@@ -541,14 +569,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 } else {
-                    alert("Document not found.");
+                    showNotification("Document not found.");
                 }
             } catch (error) {
                 console.error("Error loading document:", error);
-                alert("Failed to load document. Please check the console for details.");
+                showNotification("Failed to load document. Please check the console for details.");
             } finally {
                 loadButton.disabled = false;
-                loadButton.textContent = 'Load';
+                loadIcon.classList.remove('spinner');
             }
         } else if (docNameToLoad) {
             alert(`Document "${docNameToLoad}" not found.`);
@@ -1042,55 +1070,88 @@ document.addEventListener('DOMContentLoaded', () => {
     const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } = window.firebase;
     let currentUser = null;
 
+    async function ensureLoggedIn() {
+        if (currentUser) {
+            return true;
+        }
+
+        try {
+            const provider = new GoogleAuthProvider();
+            await signInWithPopup(auth, provider);
+            return !!auth.currentUser;
+        } catch (error) {
+            console.error("Authentication failed:", error);
+            showNotification("Login failed. Please check the console for details.");
+            return false;
+        }
+    }
+
     onAuthStateChanged(auth, (user) => {
         currentUser = user;
         if (user) {
             // User is signed in
-            loginButton.textContent = 'Logout';
-            loadButton.disabled = false;
-            saveButton.disabled = false;
+            loginButton.style.display = 'none';
+            userMenu.style.display = 'block';
+            userAvatar.src = user.photoURL;
             documentTitle.textContent = user.displayName ? `${user.displayName}'s Document` : 'Untitled Document';
         } else {
             // User is signed out
-            loginButton.textContent = 'Login';
-            loadButton.disabled = true;
-            saveButton.disabled = true;
+            loginButton.style.display = '';
+            userMenu.style.display = 'none';
             documentTitle.textContent = 'Untitled Document';
         }
     });
 
     loginButton.addEventListener('click', async () => {
-        if (currentUser) {
-            await signOut(auth);
-        } else {
-            try {
-                const provider = new GoogleAuthProvider();
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                console.error("Authentication failed:", error);
-                alert("Login failed. Please check the console for details.");
-            }
+        try {
+            const provider = new GoogleAuthProvider();
+            await signInWithPopup(auth, provider);
+        } catch (error) {
+            console.error("Authentication failed:", error);
+            showNotification("Login failed. Please check the console for details.");
         }
+    });
+
+    logoutButton.addEventListener('click', async () => {
+        await signOut(auth);
+        userDropdown.style.display = 'none';
+    });
+
+    switchUserButton.addEventListener('click', async () => {
+        try {
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            await signInWithPopup(auth, provider);
+        } catch (error) {
+            console.error("Authentication failed:", error);
+            showNotification("Login failed. Please check the console for details.");
+        } finally {
+            userDropdown.style.display = 'none';
+        }
+    });
+
+    userAvatar.addEventListener('click', () => {
+        userDropdown.style.display = userDropdown.style.display === 'block' ? 'none' : 'block';
     });
 
     // --- Firebase Firestore & Storage ---
     const { doc, setDoc, getDoc, collection, getDocs } = window.firebase;
     saveButton.addEventListener('click', async () => {
-        if (!currentUser) {
-            alert("You must be logged in to save a document.");
+        if (!await ensureLoggedIn()) {
             return;
         }
         if (pages.length === 0) {
-            alert("There are no pages to save.");
+            showNotification("There are no pages to save.");
             return;
         }
 
         const docName = prompt("Enter a name for your document:", documentTitle.textContent);
         if (!docName) return;
 
+        const saveIcon = saveButton.querySelector('svg');
         try {
             saveButton.disabled = true;
-            saveButton.textContent = 'Saving...';
+            saveIcon.classList.add('spinner');
 
             const pageDataPromises = pages.map(async (page) => {
                 // Compress the rawData before saving
@@ -1111,18 +1172,18 @@ document.addEventListener('DOMContentLoaded', () => {
             await setDoc(userDocRef, docData);
 
             documentTitle.textContent = docName;
-            alert(`Document "${docName}" saved successfully.`);
+            showNotification(`Document "${docName}" saved successfully.`);
 
         } catch (error) {
             console.error("Error saving document:", error);
-            alert("Failed to save document. Please check the console for details.");
+            showNotification("Failed to save document. Please check the console for details.");
         } finally {
             saveButton.disabled = false;
-            saveButton.textContent = 'Save';
+            saveIcon.classList.remove('spinner');
         }
     });
 
-    documentTitle.addEventListener('click', () => {
+    function startDocumentRename() {
         const oldTitle = documentTitle.textContent;
         const input = document.createElement('input');
         input.type = 'text';
@@ -1147,7 +1208,36 @@ document.addEventListener('DOMContentLoaded', () => {
         documentTitle.replaceWith(input);
         input.focus();
         input.select();
+    }
+
+    renameButton.addEventListener('click', startDocumentRename);
+
+    menuButton.addEventListener('click', () => {
+        canvas.style.visibility = 'hidden';
+        const isVisible = indexSection.classList.contains('force-show') ||
+                          (window.innerWidth > 768 && !indexSection.classList.contains('force-hide'));
+
+        if (window.innerWidth > 768) {
+            // Desktop
+            if (isVisible) {
+                indexSection.classList.add('force-hide');
+                indexSection.classList.remove('force-show');
+            } else {
+                indexSection.classList.remove('force-hide');
+            }
+        } else {
+            // Mobile
+            if (isVisible) {
+                indexSection.classList.remove('force-show');
+            } else {
+                indexSection.classList.add('force-show');
+            }
+        }
+
+        // Wait for the CSS transition to finish before resizing the canvas
+        setTimeout(resizeCanvas, 300); // 300ms matches the transition duration in style.css
     });
+
     // Initial setup
     resizeCanvas();
     canvasContainer.style.cursor = 'grab';
