@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const switchUserButton = document.getElementById('switch-user-button');
     const logoutButton = document.getElementById('logout-button');
     const notificationArea = document.getElementById('notification-area');
+    const dropdownLoadButton = document.getElementById('dropdown-load-button');
+    const dropdownSaveButton = document.getElementById('dropdown-save-button');
 
     let notificationTimeout;
 
@@ -500,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    loadButton.addEventListener('click', async () => {
+    const handleLoad = async () => {
         if (!await ensureLoggedIn()) {
             return;
         }
@@ -585,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (docNameToLoad) {
             alert(`Document "${docNameToLoad}" not found.`);
         }
-    });
+    };
 
 
     // --- User Interaction for Pan and Zoom ---
@@ -1208,7 +1210,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Firebase Firestore & Storage ---
     const { doc, setDoc, getDoc, collection, getDocs } = window.firebase;
-    saveButton.addEventListener('click', async () => {
+    const handleSave = async () => {
         if (!await ensureLoggedIn()) {
             return;
         }
@@ -1253,7 +1255,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveButton.disabled = false;
             saveIcon.classList.remove('spinner');
         }
-    });
+    };
 
     function startDocumentRename() {
         const oldTitle = documentTitle.textContent;
@@ -1283,6 +1285,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     renameButton.addEventListener('click', startDocumentRename);
+
+    loadButton.addEventListener('click', handleLoad);
+    dropdownLoadButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleLoad();
+        userDropdown.style.display = 'none';
+    });
+
+    saveButton.addEventListener('click', handleSave);
+    dropdownSaveButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleSave();
+        userDropdown.style.display = 'none';
+    });
 
     menuButton.addEventListener('click', () => {
         const isVisible = indexSection.classList.contains('force-show') ||

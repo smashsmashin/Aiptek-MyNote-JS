@@ -295,6 +295,10 @@
                 /* No special positioning needed; it's a natural flex item. */
                 /* On mobile, it's just hidden or shown by the JS. */
             }
+            /* Hide original buttons on mobile */
+            #title-bar #load-button, #title-bar #save-button {
+                display: none;
+            }
         }
     </style>
 </head>
@@ -329,6 +333,8 @@
             <div id="user-menu" style="display: none;">
                 <img id="user-avatar" src="" alt="User Avatar" />
                 <div id="user-dropdown">
+                    <a href="#" id="dropdown-load-button">Load</a>
+                    <a href="#" id="dropdown-save-button">Save</a>
                     <a href="#" id="switch-user-button">Switch User</a>
                     <a href="#" id="logout-button">Logout</a>
                 </div>
