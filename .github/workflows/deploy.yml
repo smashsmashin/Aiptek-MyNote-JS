@@ -12,6 +12,7 @@ on:
       - feat-update-title-bar-ui
       - fix-mobile-menu-push
       - feat-canvas-resize-observer
+      - feature-touch-controls
 
 jobs:
   build-and-deploy:
