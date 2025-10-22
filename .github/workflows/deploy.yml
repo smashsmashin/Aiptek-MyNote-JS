@@ -10,6 +10,7 @@ on:
       - feature/add-compression
       - feat/update-title-bar-ui
       - feat-update-title-bar-ui
+      - fix-mobile-menu-push
 
 jobs:
   build-and-deploy:
