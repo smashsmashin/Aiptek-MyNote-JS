@@ -11,6 +11,7 @@ on:
       - feat/update-title-bar-ui
       - feat-update-title-bar-ui
       - fix-mobile-menu-push
+      - feat-canvas-resize-observer
 
 jobs:
   build-and-deploy:
