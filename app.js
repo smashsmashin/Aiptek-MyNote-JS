@@ -241,7 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.style.visibility = 'visible';
     }
 
-    window.addEventListener('resize', resizeCanvas);
+    const resizeObserver = new ResizeObserver(resizeCanvas);
+    resizeObserver.observe(canvasContainer);
 
 
     function drawCurrentPage() {
