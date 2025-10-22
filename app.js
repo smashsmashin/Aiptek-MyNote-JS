@@ -587,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (docNameToLoad) {
             alert(`Document "${docNameToLoad}" not found.`);
         }
-    });
+    };
 
 
     // --- User Interaction for Pan and Zoom ---
@@ -1255,7 +1255,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveButton.disabled = false;
             saveIcon.classList.remove('spinner');
         }
-    });
+    };
 
     function startDocumentRename() {
         const oldTitle = documentTitle.textContent;
