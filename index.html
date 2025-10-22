@@ -23,7 +23,6 @@
             border-right: 1px solid #ccc;
             flex-direction: column;
             background: white;
-            z-index: 1000;
         }
         .force-show { display: flex !important; }
         .force-hide { display: none !important; }
@@ -293,11 +292,8 @@
         }
         @media (max-width: 768px) {
             #index-section {
-                position: absolute;
-                left: 0;
-                top: 0;
-                bottom: 0;
-                box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+                /* No special positioning needed; it's a natural flex item. */
+                /* On mobile, it's just hidden or shown by the JS. */
             }
         }
     </style>

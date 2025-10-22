@@ -1213,7 +1213,6 @@ document.addEventListener('DOMContentLoaded', () => {
     renameButton.addEventListener('click', startDocumentRename);
 
     menuButton.addEventListener('click', () => {
-        canvas.style.visibility = 'hidden';
         const isVisible = indexSection.classList.contains('force-show') ||
                           (window.innerWidth > 768 && !indexSection.classList.contains('force-hide'));
 
@@ -1233,9 +1232,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 indexSection.classList.add('force-show');
             }
         }
-
-        // Wait for the CSS transition to finish before resizing the canvas
-        setTimeout(resizeCanvas, 300); // 300ms matches the transition duration in style.css
     });
 
     // Initial setup
