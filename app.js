@@ -225,6 +225,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let panY = 0;
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
+    let isTouching = false;
+    let lastTouch = { x: 0, y: 0 };
+    let initialPinchDistance = 0;
     let splitPreview = null; // Holds info for split preview: { index, splitPoint }
     let mergePreview = null; // Holds temporary data for merge preview
 
@@ -638,6 +641,74 @@ document.addEventListener('DOMContentLoaded', () => {
             panStart.y = e.clientY;
             drawCurrentPage();
         }
+    });
+
+    canvasContainer.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        isTouching = true;
+        if (e.touches.length === 1) {
+            lastTouch.x = e.touches[0].clientX;
+            lastTouch.y = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            initialPinchDistance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+        }
+    });
+
+    canvasContainer.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        // After a finger is lifted, e.touches shows the remaining fingers
+        if (e.touches.length < 2) {
+            initialPinchDistance = 0; // Stop zooming
+        }
+        if (e.touches.length === 1) {
+            // If one finger remains, reset panning start point to prevent a jump
+            lastTouch.x = e.touches[0].clientX;
+            lastTouch.y = e.touches[0].clientY;
+        } else if (e.touches.length === 0) {
+            // No fingers left
+            isTouching = false;
+        }
+    });
+
+    canvasContainer.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (!isTouching) return;
+
+        if (e.touches.length === 1) {
+            const dx = e.touches[0].clientX - lastTouch.x;
+            const dy = e.touches[0].clientY - lastTouch.y;
+            panX += dx;
+            panY += dy;
+            lastTouch.x = e.touches[0].clientX;
+            lastTouch.y = e.touches[0].clientY;
+        } else if (e.touches.length === 2 && initialPinchDistance > 0) {
+            const currentPinchDistance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            const zoomFactor = currentPinchDistance / initialPinchDistance;
+
+            const rect = canvasContainer.getBoundingClientRect();
+            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+
+            const mouseBeforeZoomX = (centerX - panX) / scale;
+            const mouseBeforeZoomY = (centerY - panY) / scale;
+
+            scale *= zoomFactor;
+
+            const mouseAfterZoomX = (centerX - panX) / scale;
+            const mouseAfterZoomY = (centerY - panY) / scale;
+
+            panX += (mouseAfterZoomX - mouseBeforeZoomX) * scale;
+            panY += (mouseAfterZoomY - mouseBeforeZoomY) * scale;
+
+            initialPinchDistance = currentPinchDistance;
+        }
+        drawCurrentPage();
     });
 
     // --- Selection Bar Interaction ---
