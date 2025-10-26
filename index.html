@@ -282,6 +282,35 @@
             display: none;
         }
 
+        #mobile-selection-controls {
+            display: none; /* Hidden by default */
+            position: fixed;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            flex-direction: column;
+            z-index: 100;
+        }
+        #mobile-selection-controls button {
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 10px 0;
+            cursor: grab;
+        }
+        #mobile-selection-controls button:active {
+            cursor: grabbing;
+        }
+        #selection-indicator {
+            display: none; /* Hidden by default */
+            position: absolute;
+            width: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #3980da;
+            border-radius: 2.5px;
+        }
+
         /* Responsive Design */
         @media (min-width: 769px) {
             #index-section {
@@ -298,6 +327,15 @@
             /* Hide original buttons on mobile */
             #title-bar #load-button, #title-bar #save-button {
                 display: none;
+            }
+            #selection-section .thumb {
+                display: none; /* Hide desktop thumbs */
+            }
+            #selection-bar {
+                background-color: transparent; /* Hide desktop bar background */
+            }
+            #selection-indicator {
+                display: block; /* Show mobile selection line */
             }
         }
     </style>
@@ -359,7 +397,20 @@
                 <div id="selection-bar">
                     <div id="min-thumb" class="thumb" tabindex="0"></div>
                     <div id="max-thumb" class="thumb" tabindex="0"></div>
+                    <div id="selection-indicator"></div>
                 </div>
+            </div>
+            <div id="mobile-selection-controls">
+                <button id="min-handle">
+                    <svg width="48" height="48" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                        <path style="fill:#3980da;fill-opacity:0.198979;stroke:#256bc1;stroke-width:0.494845" d="M 47.751953,0.24804688 A 47.505154,47.505154 0 0 0 47.714844,0.25 h 0.03711 z M 43.25,0.484375 A 47.505154,47.505154 0 0 0 0.48828125,43.25 H 30.798828 A 17.814434,17.814432 0 0 1 43.25,30.791016 Z m -43,47.230469 a 47.505154,47.505154 0 0 0 -0.001953,0.03711 H 0.25 Z" />
+                    </svg>
+                </button>
+                <button id="max-handle">
+                    <svg width="48" height="48" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                        <path style="fill:#3980da;fill-opacity:0.198979;stroke:#256bc1;stroke-width:0.494845" d="m 47.752329,47.738589 a 47.505154,47.505154 0 0 1 -0.03711,-0.002 h 0.03711 z M 43.250376,47.502261 A 47.505154,47.505154 0 0 1 0.4886567,4.7366361 H 30.799204 A 17.814434,17.814432 0 0 0 43.250376,17.19562 Z M 0.2503757,0.27179209 a 47.505154,47.505154 0 0 1 -0.002,-0.03711 h 0.002 z" />
+                    </svg>
+                </button>
             </div>
         </div>
     </div>
