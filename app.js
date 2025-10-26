@@ -823,10 +823,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    canvasContainer.addEventListener('click', () => {
+    let holdTimeout;
+
+    canvasContainer.addEventListener('touchstart', (e) => {
         if (window.innerWidth <= 768) {
-            showMobileControls();
+            // Don't start the hold timer if the touch is on a handle
+            if (e.target.closest('#mobile-selection-controls')) return;
+
+            holdTimeout = setTimeout(() => {
+                showMobileControls();
+            }, 1000); // 1-second hold
         }
+    });
+
+    canvasContainer.addEventListener('touchmove', () => {
+        // If the user moves their finger, it's a pan, not a hold.
+        clearTimeout(holdTimeout);
+    });
+
+    canvasContainer.addEventListener('touchend', () => {
+        // If the user lifts their finger before the timeout, cancel it.
+        clearTimeout(holdTimeout);
     });
 
     function onHandleTouchStart(e) {
@@ -857,16 +874,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const deltaX = e.touches[0].clientX - touchStart.x;
         const deltaY = e.touches[0].clientY - touchStart.y;
 
-        // Vertical drag determines direction and speed
-        const speed = 1 + Math.abs(deltaY) / 50;
-        // Horizontal drag determines the magnitude of the change
-        const change = Math.round((deltaX / 10) * speed);
+        // Horizontal drag affects the magnitude of the change
+        const magnitude = 1 + Math.abs(deltaX) / 20;
+        // Vertical drag determines the direction and base speed
+        const change = Math.round((deltaY / 5) * magnitude);
 
         if (activeHandle === 'min') {
-            // Dragging up (negative deltaY) should decrease the value
-            selectionMin = Math.max(0, Math.min(selectionMin - change, selectionMax));
+            selectionMin = Math.max(0, Math.min(selectionMin + change, selectionMax));
         } else {
-            // Dragging down (positive deltaY) should increase the value
             selectionMax = Math.max(selectionMin, Math.min(selectionMax + change, totalPaths));
         }
 
