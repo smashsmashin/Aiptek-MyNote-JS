@@ -836,16 +836,19 @@ document.addEventListener('DOMContentLoaded', () => {
     let controlsTimeout;
     let activeHandle = null;
     let touchStart = { x: 0, y: 0 };
+    let isDraggingHandle = false; // Flag to distinguish tap from drag
 
     function showMobileControls(duration = 5000) {
         if (window.innerWidth > 768) return;
         mobileSelectionControls.style.display = 'flex';
+        selectionIndicator.style.display = 'block'; // Show indicator with controls
         minHandle.style.visibility = 'visible';
         maxHandle.style.visibility = 'visible';
         clearTimeout(controlsTimeout);
         if (duration > 0) {
             controlsTimeout = setTimeout(() => {
                 mobileSelectionControls.style.display = 'none';
+                selectionIndicator.style.display = 'none'; // Hide indicator with controls
             }, duration);
         }
     }
@@ -858,14 +861,8 @@ document.addEventListener('DOMContentLoaded', () => {
         activeHandle = e.currentTarget === minHandle ? 'min' : 'max';
         touchStart.x = e.touches[0].clientX;
         touchStart.y = e.touches[0].clientY;
-        clearTimeout(controlsTimeout); // Keep controls visible while dragging
-
-        // Hide the other handle
-        if (activeHandle === 'min') {
-            maxHandle.style.visibility = 'hidden';
-        } else {
-            minHandle.style.visibility = 'hidden';
-        }
+        isDraggingHandle = false; // Reset drag flag on new touch
+        clearTimeout(controlsTimeout); // Keep controls visible while interacting
     }
 
     function onHandleTouchMove(e) {
@@ -873,16 +870,28 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         e.stopPropagation();
 
+        const deltaY = e.touches[0].clientY - touchStart.y;
+        const DRAG_THRESHOLD = 5; // Pixels
+
+        // If movement exceeds threshold, it's a drag.
+        if (!isDraggingHandle && Math.abs(deltaY) > DRAG_THRESHOLD) {
+            isDraggingHandle = true;
+            // Now that we know it's a drag, hide the other handle.
+            if (activeHandle === 'min') {
+                maxHandle.style.visibility = 'hidden';
+            } else {
+                minHandle.style.visibility = 'hidden';
+            }
+        }
+
+        if (!isDraggingHandle) return; // Don't change value if not dragging
+
         const page = pages[currentPageIndex];
         const totalPaths = page.paths ? page.paths.length : 0;
         if (totalPaths <= 1) return;
 
         const deltaX = e.touches[0].clientX - touchStart.x;
-        const deltaY = e.touches[0].clientY - touchStart.y;
-
-        // Horizontal drag affects the magnitude of the change
         const magnitude = 1 + Math.abs(deltaX) / 20;
-        // Vertical drag determines the direction and base speed
         const change = Math.round((deltaY / 5) * magnitude);
 
         if (activeHandle === 'min') {
@@ -894,7 +903,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateThumbs();
         drawCurrentPage();
 
-        // Reset start position for next small movement
         touchStart.x = e.touches[0].clientX;
         touchStart.y = e.touches[0].clientY;
     }
@@ -902,7 +910,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function onHandleTouchEnd(e) {
         e.preventDefault();
         e.stopPropagation();
+
+        if (!isDraggingHandle) {
+            // This was a tap, not a drag.
+            const page = pages[currentPageIndex];
+            if (page) {
+                const totalPaths = page.paths ? page.paths.length : 0;
+                if (activeHandle === 'min') {
+                    // Tapping 'up' should decrease the value (move selection top up)
+                    selectionMin = Math.max(0, Math.min(selectionMin - 1, selectionMax));
+                } else {
+                    // Tapping 'down' should increase the value (move selection bottom down)
+                    selectionMax = Math.max(selectionMin, Math.min(selectionMax + 1, totalPaths));
+                }
+                updateThumbs();
+                drawCurrentPage();
+            }
+        }
+
         activeHandle = null;
+        isDraggingHandle = false;
         showMobileControls(); // Show both handles and restart timer
     }
 

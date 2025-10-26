@@ -224,7 +224,7 @@
         }
         #selection-section {
             width: 25px;
-            padding: 10px;
+            padding: 0 10px; /* Horizontal padding only */
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -234,10 +234,10 @@
         #selection-bar {
             position: relative;
             width: 10px;
-            height: calc(100% - 20px);
+            height: 100%; /* Fill the container */
             background-color: #ddd;
             border-radius: 5px;
-            margin: 10px 0;
+            margin: 0; /* No vertical margin */
         }
         .thumb {
             position: absolute;
@@ -295,7 +295,7 @@
             background: none;
             border: none;
             padding: 0;
-            margin: 10px 0;
+            margin: 0;
             cursor: grab;
         }
         #mobile-selection-controls button:active {
@@ -331,8 +331,8 @@
             #selection-section {
                 /* On mobile, become an invisible overlay for the indicator */
                 position: absolute;
-                top: 10px;
-                bottom: 10px;
+                top: 0;
+                bottom: 0;
                 right: 0; /* Position at the edge */
                 width: 5px; /* Just enough for the indicator */
                 padding: 0;
@@ -352,7 +352,7 @@
                 padding: 0;
             }
             #selection-indicator {
-                display: block; /* Show mobile selection line */
+                /* Visibility is now controlled by JS, so we just set position here */
                 left: 0; /* Align to the left of the new container */
                 transform: none; /* Remove centering transform */
             }
