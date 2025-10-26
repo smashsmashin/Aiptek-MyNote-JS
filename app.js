@@ -10,6 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectionBar = document.getElementById('selection-bar');
     const minThumb = document.getElementById('min-thumb');
     const maxThumb = document.getElementById('max-thumb');
+    const selectionIndicator = document.getElementById('selection-indicator');
+    const mobileSelectionControls = document.getElementById('mobile-selection-controls');
+    const minHandle = document.getElementById('min-handle');
+    const maxHandle = document.getElementById('max-handle');
 
     const titleBar = document.getElementById('title-bar');
     const menuButton = document.getElementById('menu-button');
@@ -719,15 +723,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentPageIndex < 0) return;
         const page = pages[currentPageIndex];
         const totalPaths = page.paths ? page.paths.length : 0;
+
         if (totalPaths === 0) {
             minThumb.style.top = '0%';
             maxThumb.style.top = '0%';
+            selectionIndicator.style.top = '0%';
+            selectionIndicator.style.height = '0%';
             return;
         }
+
         const minPercent = (selectionMin / totalPaths) * 100;
         const maxPercent = (selectionMax / totalPaths) * 100;
+
+        // For desktop
         minThumb.style.top = `${minPercent}%`;
         maxThumb.style.top = `${maxPercent}%`;
+
+        // For mobile
+        selectionIndicator.style.top = `${minPercent}%`;
+        selectionIndicator.style.height = `${maxPercent - minPercent}%`;
     }
 
     let activeThumb = null;
@@ -789,6 +803,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
     minThumb.addEventListener('keydown', handleThumbKeyDown);
     maxThumb.addEventListener('keydown', handleThumbKeyDown);
+
+    // --- Mobile Selection Controls ---
+
+    let controlsTimeout;
+    let activeHandle = null;
+    let touchStart = { x: 0, y: 0 };
+
+    function showMobileControls(duration = 5000) {
+        if (window.innerWidth > 768) return;
+        mobileSelectionControls.style.display = 'flex';
+        minHandle.style.display = 'block';
+        maxHandle.style.display = 'block';
+        clearTimeout(controlsTimeout);
+        if (duration > 0) {
+            controlsTimeout = setTimeout(() => {
+                mobileSelectionControls.style.display = 'none';
+            }, duration);
+        }
+    }
+
+    canvasContainer.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+            showMobileControls();
+        }
+    });
+
+    function onHandleTouchStart(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        activeHandle = e.currentTarget === minHandle ? 'min' : 'max';
+        touchStart.x = e.touches[0].clientX;
+        touchStart.y = e.touches[0].clientY;
+        clearTimeout(controlsTimeout); // Keep controls visible while dragging
+
+        // Hide the other handle
+        if (activeHandle === 'min') {
+            maxHandle.style.display = 'none';
+        } else {
+            minHandle.style.display = 'none';
+        }
+    }
+
+    function onHandleTouchMove(e) {
+        if (!activeHandle || currentPageIndex < 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const page = pages[currentPageIndex];
+        const totalPaths = page.paths ? page.paths.length : 0;
+        if (totalPaths <= 1) return;
+
+        const deltaY = e.touches[0].clientY - touchStart.y;
+
+        // Vertical drag changes the value.
+        // A larger drag (deltaY) results in a larger change.
+        const change = Math.round(deltaY / 5); // Adjust sensitivity with the divisor
+
+        if (activeHandle === 'min') {
+            selectionMin = Math.max(0, Math.min(selectionMin + change, selectionMax));
+        } else {
+            selectionMax = Math.max(selectionMin, Math.min(selectionMax + change, totalPaths));
+        }
+
+        updateThumbs();
+        drawCurrentPage();
+
+        // Reset start position for next small movement
+        touchStart.x = e.touches[0].clientX;
+        touchStart.y = e.touches[0].clientY;
+    }
+
+    function onHandleTouchEnd(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        activeHandle = null;
+        showMobileControls(); // Show both handles and restart timer
+    }
+
+    minHandle.addEventListener('touchstart', onHandleTouchStart);
+    minHandle.addEventListener('touchmove', onHandleTouchMove);
+    minHandle.addEventListener('touchend', onHandleTouchEnd);
+    maxHandle.addEventListener('touchstart', onHandleTouchStart);
+    maxHandle.addEventListener('touchmove', onHandleTouchMove);
+    maxHandle.addEventListener('touchend', onHandleTouchEnd);
 
     // --- Page Reordering ---
 
