@@ -650,7 +650,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     canvasContainer.addEventListener('touchstart', (e) => {
-        e.preventDefault();
+        // Don't prevent default here, to allow long-press to work on mobile.
+        // e.preventDefault();
+
         isTouching = true;
         if (e.touches.length === 1) {
             lastTouch.x = e.touches[0].clientX;
@@ -661,10 +663,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.touches[0].clientY - e.touches[1].clientY
             );
         }
+
+        // --- Tap and Hold Logic ---
+        if (window.innerWidth <= 768) {
+            if (e.target.closest('#mobile-selection-controls')) return;
+            holdTimeout = setTimeout(() => {
+                showMobileControls();
+            }, 1000);
+        }
     });
 
     canvasContainer.addEventListener('touchend', (e) => {
-        e.preventDefault();
+        // e.preventDefault(); // Also remove from here to be consistent.
+
         // After a finger is lifted, e.touches shows the remaining fingers
         if (e.touches.length < 2) {
             initialPinchDistance = 0; // Stop zooming
@@ -677,11 +688,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // No fingers left
             isTouching = false;
         }
+
+        // --- Tap and Hold Logic ---
+        clearTimeout(holdTimeout);
     });
 
     canvasContainer.addEventListener('touchmove', (e) => {
+        // Now, prevent default only when a move is detected (i.e., it's a pan/zoom).
         e.preventDefault();
+
         if (!isTouching) return;
+
+        // --- Tap and Hold Logic ---
+        clearTimeout(holdTimeout);
 
         if (e.touches.length === 1) {
             const dx = e.touches[0].clientX - lastTouch.x;
@@ -824,27 +843,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let holdTimeout;
-
-    canvasContainer.addEventListener('touchstart', (e) => {
-        if (window.innerWidth <= 768) {
-            // Don't start the hold timer if the touch is on a handle
-            if (e.target.closest('#mobile-selection-controls')) return;
-
-            holdTimeout = setTimeout(() => {
-                showMobileControls();
-            }, 1000); // 1-second hold
-        }
-    });
-
-    canvasContainer.addEventListener('touchmove', () => {
-        // If the user moves their finger, it's a pan, not a hold.
-        clearTimeout(holdTimeout);
-    });
-
-    canvasContainer.addEventListener('touchend', () => {
-        // If the user lifts their finger before the timeout, cancel it.
-        clearTimeout(holdTimeout);
-    });
 
     function onHandleTouchStart(e) {
         e.preventDefault();
