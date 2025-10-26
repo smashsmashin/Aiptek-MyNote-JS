@@ -854,15 +854,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalPaths = page.paths ? page.paths.length : 0;
         if (totalPaths <= 1) return;
 
+        const deltaX = e.touches[0].clientX - touchStart.x;
         const deltaY = e.touches[0].clientY - touchStart.y;
 
-        // Vertical drag changes the value.
-        // A larger drag (deltaY) results in a larger change.
-        const change = Math.round(deltaY / 5); // Adjust sensitivity with the divisor
+        // Vertical drag determines direction and speed
+        const speed = 1 + Math.abs(deltaY) / 50;
+        // Horizontal drag determines the magnitude of the change
+        const change = Math.round((deltaX / 10) * speed);
 
         if (activeHandle === 'min') {
-            selectionMin = Math.max(0, Math.min(selectionMin + change, selectionMax));
+            // Dragging up (negative deltaY) should decrease the value
+            selectionMin = Math.max(0, Math.min(selectionMin - change, selectionMax));
         } else {
+            // Dragging down (positive deltaY) should increase the value
             selectionMax = Math.max(selectionMin, Math.min(selectionMax + change, totalPaths));
         }
 
