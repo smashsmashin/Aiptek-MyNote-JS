@@ -760,7 +760,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // For mobile
         selectionIndicator.style.top = `${minPercent}%`;
-        selectionIndicator.style.height = `${maxPercent - minPercent}%`;
+        const heightPercent = maxPercent - minPercent;
+
+        if (window.innerWidth <= 768 && heightPercent === 0 && totalPaths > 0) {
+            // On mobile, if there's no range, show a small square (5px, same as width)
+            // to indicate the position for splitting, etc.
+            selectionIndicator.style.height = '5px';
+        } else {
+            selectionIndicator.style.height = `${heightPercent}%`;
+        }
     }
 
     let activeThumb = null;
@@ -832,8 +840,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function showMobileControls(duration = 5000) {
         if (window.innerWidth > 768) return;
         mobileSelectionControls.style.display = 'flex';
-        minHandle.style.display = 'block';
-        maxHandle.style.display = 'block';
+        minHandle.style.visibility = 'visible';
+        maxHandle.style.visibility = 'visible';
         clearTimeout(controlsTimeout);
         if (duration > 0) {
             controlsTimeout = setTimeout(() => {
@@ -854,9 +862,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Hide the other handle
         if (activeHandle === 'min') {
-            maxHandle.style.display = 'none';
+            maxHandle.style.visibility = 'hidden';
         } else {
-            minHandle.style.display = 'none';
+            minHandle.style.visibility = 'hidden';
         }
     }
 
