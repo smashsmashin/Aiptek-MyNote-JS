@@ -328,14 +328,33 @@
             #title-bar #load-button, #title-bar #save-button {
                 display: none;
             }
+            #selection-section {
+                /* On mobile, become an invisible overlay for the indicator */
+                position: absolute;
+                top: 10px;
+                bottom: 10px;
+                right: 15px; /* Position away from the edge */
+                width: 5px; /* Just enough for the indicator */
+                padding: 0;
+                border-left: none;
+                background-color: transparent;
+                z-index: 50; /* Above canvas, below controls */
+                pointer-events: none; /* Let clicks/touches pass through */
+            }
             #selection-section .thumb {
                 display: none; /* Hide desktop thumbs */
             }
             #selection-bar {
                 background-color: transparent; /* Hide desktop bar background */
+                width: 100%; /* Fill the new, smaller section */
+                height: 100%;
+                margin: 0;
+                padding: 0;
             }
             #selection-indicator {
                 display: block; /* Show mobile selection line */
+                left: 0; /* Align to the left of the new container */
+                transform: none; /* Remove centering transform */
             }
         }
     </style>
