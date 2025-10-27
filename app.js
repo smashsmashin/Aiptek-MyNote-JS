@@ -10,6 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectionBar = document.getElementById('selection-bar');
     const minThumb = document.getElementById('min-thumb');
     const maxThumb = document.getElementById('max-thumb');
+    const selectionIndicator = document.getElementById('selection-indicator');
+    const mobileSelectionControls = document.getElementById('mobile-selection-controls');
+    const minHandle = document.getElementById('min-handle');
+    const maxHandle = document.getElementById('max-handle');
 
     const titleBar = document.getElementById('title-bar');
     const menuButton = document.getElementById('menu-button');
@@ -646,7 +650,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     canvasContainer.addEventListener('touchstart', (e) => {
-        e.preventDefault();
+        // Don't prevent default here, to allow long-press to work on mobile.
+        // e.preventDefault();
+
         isTouching = true;
         if (e.touches.length === 1) {
             lastTouch.x = e.touches[0].clientX;
@@ -657,10 +663,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.touches[0].clientY - e.touches[1].clientY
             );
         }
+
+        // --- Tap and Hold Logic ---
+        if (window.innerWidth <= 768) {
+            if (e.target.closest('#mobile-selection-controls')) return;
+            holdTimeout = setTimeout(() => {
+                showMobileControls();
+            }, 1000);
+        }
     });
 
     canvasContainer.addEventListener('touchend', (e) => {
-        e.preventDefault();
+        // e.preventDefault(); // Also remove from here to be consistent.
+
         // After a finger is lifted, e.touches shows the remaining fingers
         if (e.touches.length < 2) {
             initialPinchDistance = 0; // Stop zooming
@@ -673,11 +688,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // No fingers left
             isTouching = false;
         }
+
+        // --- Tap and Hold Logic ---
+        clearTimeout(holdTimeout);
     });
 
     canvasContainer.addEventListener('touchmove', (e) => {
+        // Now, prevent default only when a move is detected (i.e., it's a pan/zoom).
         e.preventDefault();
+
         if (!isTouching) return;
+
+        // --- Tap and Hold Logic ---
+        clearTimeout(holdTimeout);
 
         if (e.touches.length === 1) {
             const dx = e.touches[0].clientX - lastTouch.x;
@@ -719,15 +742,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentPageIndex < 0) return;
         const page = pages[currentPageIndex];
         const totalPaths = page.paths ? page.paths.length : 0;
+
         if (totalPaths === 0) {
             minThumb.style.top = '0%';
             maxThumb.style.top = '0%';
+            selectionIndicator.style.top = '0%';
+            selectionIndicator.style.height = '0%';
             return;
         }
+
         const minPercent = (selectionMin / totalPaths) * 100;
         const maxPercent = (selectionMax / totalPaths) * 100;
+
+        // For desktop
         minThumb.style.top = `${minPercent}%`;
         maxThumb.style.top = `${maxPercent}%`;
+
+        // For mobile
+        selectionIndicator.style.top = `${minPercent}%`;
+        const heightPercent = maxPercent - minPercent;
+
+        if (window.innerWidth <= 768 && heightPercent === 0 && totalPaths > 0) {
+            // On mobile, if there's no range, show a small square (5px, same as width)
+            // to indicate the position for splitting, etc.
+            selectionIndicator.style.height = '5px';
+        } else {
+            selectionIndicator.style.height = `${heightPercent}%`;
+        }
     }
 
     let activeThumb = null;
@@ -789,6 +830,115 @@ document.addEventListener('DOMContentLoaded', () => {
 
     minThumb.addEventListener('keydown', handleThumbKeyDown);
     maxThumb.addEventListener('keydown', handleThumbKeyDown);
+
+    // --- Mobile Selection Controls ---
+
+    let controlsTimeout;
+    let activeHandle = null;
+    let touchStart = { x: 0, y: 0 };
+    let isDraggingHandle = false; // Flag to distinguish tap from drag
+
+    function showMobileControls(duration = 5000) {
+        if (window.innerWidth > 768) return;
+        mobileSelectionControls.style.display = 'flex';
+        selectionIndicator.style.display = 'block'; // Show indicator with controls
+        minHandle.style.visibility = 'visible';
+        maxHandle.style.visibility = 'visible';
+        clearTimeout(controlsTimeout);
+        if (duration > 0) {
+            controlsTimeout = setTimeout(() => {
+                mobileSelectionControls.style.display = 'none';
+                selectionIndicator.style.display = 'none'; // Hide indicator with controls
+            }, duration);
+        }
+    }
+
+    let holdTimeout;
+
+    function onHandleTouchStart(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        activeHandle = e.currentTarget === minHandle ? 'min' : 'max';
+        touchStart.x = e.touches[0].clientX;
+        touchStart.y = e.touches[0].clientY;
+        isDraggingHandle = false; // Reset drag flag on new touch
+        clearTimeout(controlsTimeout); // Keep controls visible while interacting
+    }
+
+    function onHandleTouchMove(e) {
+        if (!activeHandle || currentPageIndex < 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const deltaY = e.touches[0].clientY - touchStart.y;
+        const DRAG_THRESHOLD = 5; // Pixels
+
+        // If movement exceeds threshold, it's a drag.
+        if (!isDraggingHandle && Math.abs(deltaY) > DRAG_THRESHOLD) {
+            isDraggingHandle = true;
+            // Now that we know it's a drag, hide the other handle.
+            if (activeHandle === 'min') {
+                maxHandle.style.visibility = 'hidden';
+            } else {
+                minHandle.style.visibility = 'hidden';
+            }
+        }
+
+        if (!isDraggingHandle) return; // Don't change value if not dragging
+
+        const page = pages[currentPageIndex];
+        const totalPaths = page.paths ? page.paths.length : 0;
+        if (totalPaths <= 1) return;
+
+        const deltaX = e.touches[0].clientX - touchStart.x;
+        const magnitude = 1 + Math.abs(deltaX) / 20;
+        const change = Math.round((deltaY / 5) * magnitude);
+
+        if (activeHandle === 'min') {
+            selectionMin = Math.max(0, Math.min(selectionMin + change, selectionMax));
+        } else {
+            selectionMax = Math.max(selectionMin, Math.min(selectionMax + change, totalPaths));
+        }
+
+        updateThumbs();
+        drawCurrentPage();
+
+        touchStart.x = e.touches[0].clientX;
+        touchStart.y = e.touches[0].clientY;
+    }
+
+    function onHandleTouchEnd(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!isDraggingHandle) {
+            // This was a tap, not a drag.
+            const page = pages[currentPageIndex];
+            if (page) {
+                const totalPaths = page.paths ? page.paths.length : 0;
+                if (activeHandle === 'min') {
+                    // Tapping 'up' should decrease the value (move selection top up)
+                    selectionMin = Math.max(0, Math.min(selectionMin - 1, selectionMax));
+                } else {
+                    // Tapping 'down' should increase the value (move selection bottom down)
+                    selectionMax = Math.max(selectionMin, Math.min(selectionMax + 1, totalPaths));
+                }
+                updateThumbs();
+                drawCurrentPage();
+            }
+        }
+
+        activeHandle = null;
+        isDraggingHandle = false;
+        showMobileControls(); // Show both handles and restart timer
+    }
+
+    minHandle.addEventListener('touchstart', onHandleTouchStart);
+    minHandle.addEventListener('touchmove', onHandleTouchMove);
+    minHandle.addEventListener('touchend', onHandleTouchEnd);
+    maxHandle.addEventListener('touchstart', onHandleTouchStart);
+    maxHandle.addEventListener('touchmove', onHandleTouchMove);
+    maxHandle.addEventListener('touchend', onHandleTouchEnd);
 
     // --- Page Reordering ---
 
